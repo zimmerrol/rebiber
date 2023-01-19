@@ -1,3 +1,9 @@
+$raw_data_folder = "raw_data"
+
+if (-Not (Test-Path -Path $raw_data_folder)) {
+    Write-Host "Cannot find raw_data folder. Execute this script from inside rebiber/rebiber."
+    exit
+}
 
 $base_conference_ids = @(
     "nips/neurips{0}"
@@ -8,12 +14,12 @@ $base_conference_ids = @(
     "cvpr/cvpr{0}"
 )
 $start_year = 2020
+$end_year = [int]$(get-date -Format yyyy) + 1
+
 
 foreach ($base_conference_id in $base_conference_ids) {
-    #$base_conference_id="nips/neurips{0}"
     
-    $year = $start_year
-    while ($true) {
+    for ($year = $start_year; $year -le $end_year; $year = $year + 1) {
         $conference_id = [string]::Format($base_conference_id, $year)
 
         $conference_name = $conference_id.split("/")[-1]
@@ -23,27 +29,23 @@ foreach ($base_conference_id in $base_conference_ids) {
             $start = $idx * 1000
             $end = $start + 1000
             $url = [string]::Format($base_url, $conference_id, $start, $end)
-            $output = [string]::Format("{0}-{1}.bib", $conference_name, $idx + 1)
-            Write-Host $url $output
-            Invoke-WebRequest $url -OutFile $output
-            if ((Get-Item $output).length -eq 0) {
-                Remove-Item $output
+            $output_name = [string]::Format("{0}-{1}.bib", $conference_name, $idx + 1)
+            $output_path = Join-Path -Path $raw_data_folder -ChildPath $output_name
+            Write-Host "Downloading $output_path"
+            Invoke-WebRequest $url -OutFile $output_path
+            if ((Get-Item $output_path).length -eq 0) {
+                Remove-Item $output_path
                 break
             }
             $idx = $idx + 1
         }
 
-        if ($idx -eq 0) {
-            break
+        
+        if ($idx -gt 0) {
+            # Merge files
+            $conference_name_path = Join-Path -Path $raw_data_folder -ChildPath $conference_name
+            Get-Content "$conference_name_path-*.bib" | Set-Content "$conference_name_path.bib"
+            Remove-Item "$conference_name_path-*.bib"
         }
-
-        # Merge files
-        Get-Content "$conference_name-*.bib" | Set-Content "$conference_name.bib"
-        Remove-Item "$conference_name-*.bib"
-
-        $year = $year + 1
     }
 }
-#https://dblp.org/search/publ/api?q=toc%3Adb/conf/nips/neurips2021.bht%3A&f=0&h=1000&format=bibtex
-#https://dblp.org/search/publ/api?q=toc%3Adb/conf/nips/neurips2021.bht%3A&f=1000&h=1000&format=bibtex
-#https://dblp.org/search/publ/api?q=toc%3Adb/conf/nips/neurips2021.bht%3A&f=0&h=1000&format=bibtex
