@@ -49,6 +49,7 @@ def post_processing(output_bib_entries, removed_value_names, abbr_dict, sort):
             bib_entry_str += line
         bib_entry_str += "\n"
     parsed_entries  = bibtexparser.loads(bib_entry_str, bibparser)
+    
     if len(parsed_entries.entries) < len(output_bib_entries)-5:
         print("Warning: len(parsed_entries.entries) < len(output_bib_entries) -5 -->", len(parsed_entries.entries), len(output_bib_entries))
         output_str = ""
@@ -75,13 +76,13 @@ def post_processing(output_bib_entries, removed_value_names, abbr_dict, sort):
     return bibtexparser.dumps(parsed_entries, writer=writer)
 
 
-def get_online_selection(title: str, authors: str, suggestions: List[Dict[str, str]]) -> Dict[str, str]:
+def get_online_selection(title: str, authors: str, year: int, suggestions: List[Dict[str, str]]) -> Dict[str, str]:
     if len(suggestions) == 0:
         return None
 
-    print(termcolor.colored("Multi Potential Matches Found!", "yellow"))
-    print(termcolor.colored("Original Title:   ", "green") + cleanup_title(title))
-    print(termcolor.colored("Original Authors: ", "green") + authors.replace("\n", " ").replace("  ", " "))
+    print(termcolor.colored("Multiple Potential Matches Found!", "yellow"))
+    print(termcolor.colored("Original Title (Year): ", "green") + cleanup_title(title) + (" (" + year + ")" if year is not None else ""))
+    print(termcolor.colored("Original Authors:      ", "green") + authors.replace("\n", " ").replace("  ", " "))
     print()
 
     LINE_UP = '\033[1A'
@@ -89,12 +90,15 @@ def get_online_selection(title: str, authors: str, suggestions: List[Dict[str, s
 
     for i, s in enumerate(suggestions):
         print(termcolor.colored(f"Option #{i}", "magenta"))
-        print(termcolor.colored("• Title:          ", "magenta") + cleanup_title(s["title"]))
-        print(termcolor.colored("• Authors:        ", "magenta") + s["author"].replace("\n", " ").replace("  ", " "))
+        print(termcolor.colored("• Title (Year):        ", "magenta") + cleanup_title(s["title"]) + (" (" + s["year"] + ")" if "year" in s else ""))
+        if "author" in s:
+            print(termcolor.colored("• Authors:             ", "magenta") + s["author"].replace("\n", " ").replace("  ", " "))
+        else:
+            print(termcolor.colored("• Authors:             ", "magenta"))
         print()
 
     def cleanup(attempts):
-        n = len(suggestions) * 4 + 6 + attempts
+        n = len(suggestions) * 4 + 4 + attempts
         for _ in range(n):
             print(LINE_UP, end=LINE_CLEAR)
 
@@ -110,12 +114,52 @@ def get_online_selection(title: str, authors: str, suggestions: List[Dict[str, s
             return suggestions[int(choice)]
 
 
-def normalize_bib(bib_db, all_bib_entries, output_bib_path, deduplicate=True, removed_value_names=[], abbr_dict=[], sort=False):
-    dblp_lookup_service = DBLPLookupService()
-    crossref_lookup_service = CrossrefLookupService()
+def normalize_bib(bib_db, all_bib_entries, output_bib_path, deduplicate=True, removed_value_names=[], abbr_dict=[],
+                  sort=False, use_lookup_services: bool = False):
+    if use_lookup_services:
+        dblp_lookup_service = DBLPLookupService()
+        crossref_lookup_service = CrossrefLookupService()
     output_bib_entries = []
     num_converted = 0
     bib_keys = set()
+
+    def _proc_arxiv(bib_dict, original_bibkey, original_title):
+        nonlocal num_converted
+        bib_dict["arxiv_id"] = set()
+        for match in re.finditer(
+            r"(arxiv:|arxiv.org\/abs\/|arxiv.org\/pdf\/)([0-9]{4}).([0-9]{5})", bib_entry_str.lower()
+        ):
+            bib_dict["arxiv_id"].add(f"{match.group(2)}.{match.group(3)}")
+            
+        if len(bib_dict["arxiv_id"]) == 1:
+            bib_dict["arxiv_id"] = bib_dict["arxiv_id"].pop()
+            bib_dict["arxiv_year"] = "20" + bib_dict["arxiv_id"].split(".")[0][:2]
+            bib_entry = [
+                line + "\n"
+                for line in f"""@{bib_dict['ENTRYTYPE']}{{{bib_dict['ID']},
+            title={{{bib_dict['title']}}},
+            author={{{bib_dict['author']}}},
+            journal={{ArXiv preprint}},
+            volume={{abs/{bib_dict['arxiv_id']}}},
+            year={{{bib_dict['arxiv_year']}}},
+            url={{https://arxiv.org/abs/{bib_dict['arxiv_id']}}}
+            }}""".split(
+                    "\n"
+                )
+            ]
+
+            log_str = "Normalized arXiv entry. ID: %s ; Title: %s" % (
+                original_bibkey,
+                original_title,
+            )
+            num_converted += 1
+            print(log_str)
+
+            return bib_entry
+        
+        return bib_dict
+
+
     for bib_entry in all_bib_entries:
         # read the title from this bib_entry
         bibparser = bibtexparser.bparser.BibTexParser(ignore_nonstandard_types=False)
@@ -134,18 +178,6 @@ def normalize_bib(bib_db, all_bib_entries, output_bib_path, deduplicate=True, re
         # try to map the bib_entry to the keys in all_bib_entries
         found_bibitem = None
         if title in bib_db and title:
-            # Uncomment to use new online look-up service.
-            #
-            # suggestions_dblp = dblp_lookup_service.get_suggestions(bib_entry_parsed.entries[0], 3)
-            # suggestions_cr = crossref_lookup_service.get_suggestions(bib_entry_parsed.entries[0], 3)
-            # suggestions = suggestions_dblp + suggestions_cr
-            #
-            # suggestions = [s for s in suggestions if "journal" not in s or s["journal"] != "CoRR"]
-            #
-            # choice = get_online_selection(bib_entry_parsed.entries[0]["title"], bib_entry_parsed.entries[0]["author"], suggestions)
-            # 
-            # print("choice:", choice)
-
             # update the bib_key to be the original_bib_key
             for line_idx in range(len(bib_db[title])):
                 line = bib_db[title][line_idx]
@@ -157,45 +189,45 @@ def normalize_bib(bib_db, all_bib_entries, output_bib_path, deduplicate=True, re
                     found_bibitem = bib_db[title].copy()
                     found_bibitem[line_idx] = line
                     break
-            if found_bibitem:
-                log_str = "Converted. ID: %s ; Title: %s" % (original_bibkey, original_title)
+
+            if found_bibitem is not None:
+                log_str = "Converted. ID: %s ; Title: %s" % (original_bibkey, original_title.replace("\n", " ").replace("  ", " "))
                 num_converted += 1
                 print(log_str)
                 output_bib_entries.append(found_bibitem)
+            else:
+                raise RuntimeError("This should never happen.")
         else:
             bib_dict = bib_entry_parsed.entries[0]
-            bib_dict["arxiv_id"] = set()
-            for match in re.finditer(
-                r"(arxiv:|arxiv.org\/abs\/|arxiv.org\/pdf\/)([0-9]{4}).([0-9]{5})", bib_entry_str.lower()
-            ):
-                bib_dict["arxiv_id"].add(f"{match.group(2)}.{match.group(3)}")
+            if use_lookup_services:
+                suggestions_dblp = dblp_lookup_service.get_suggestions(bib_dict, 3)
+                suggestions_cr = crossref_lookup_service.get_suggestions(bib_dict, 3)
+                suggestions = suggestions_dblp + suggestions_cr
                 
-            if len(bib_dict["arxiv_id"]) == 1:
-                bib_dict["arxiv_id"] = bib_dict["arxiv_id"].pop()
-                bib_dict["arxiv_year"] = "20" + bib_dict["arxiv_id"].split(".")[0][:2]
-                bib_entry = [
-                    line + "\n"
-                    for line in f"""@{bib_dict['ENTRYTYPE']}{{{bib_dict['ID']},
-                  title={{{bib_dict['title']}}},
-                  author={{{bib_dict['author']}}},
-                  journal={{ArXiv preprint}},
-                  volume={{abs/{bib_dict['arxiv_id']}}},
-                  year={{{bib_dict['arxiv_year']}}},
-                  url={{https://arxiv.org/abs/{bib_dict['arxiv_id']}}}
-                }}""".split(
-                        "\n"
+                suggestions = [s for s in suggestions if "journal" not in s or s["journal"] != "CoRR"]
+                
+                choice = get_online_selection(bib_dict["title"], bib_dict["author"], bib_dict.get("year", None), suggestions)
+
+                if choice is None:
+                    output_bib_entries.append(_proc_arxiv(bib_dict, original_bibkey, original_title))
+                else:
+                    bib_entry = [f"@{choice['ENTRYTYPE']}{{{bib_dict['ID']},\n"]
+                    for key, value in choice.items():
+                        if key == "ENTRYTYPE" or key == "ID":
+                            continue
+                        bib_entry += [f" {key} = {{{value}}},\n"]
+                    bib_entry += ["}\n"]
+
+                    log_str = "Converted online entry. ID: %s ; Title: %s" % (
+                        original_bibkey,
+                        original_title,
                     )
-                ]
-
-                log_str = "Converted arXiv entry. ID: %s ; Title: %s" % (
-                    original_bibkey,
-                    original_title,
-                )
-                num_converted += 1
-                print(log_str)
-
+                    num_converted += 1
+                    print(log_str)
+                    output_bib_entries.append(bib_entry)
+            else:
+                output_bib_entries.append(_proc_arxiv(bib_dict, original_bibkey, original_title))
                 
-            output_bib_entries.append(bib_entry)
     print("Num of converted items:", num_converted)
     # post-formatting
     output_string = post_processing(output_bib_entries, removed_value_names, abbr_dict, sort)
@@ -244,6 +276,8 @@ def main():
                         type=str, help="A comma-seperated list of values you want to remove, such as '--remove url,biburl,address,publisher'.")
     parser.add_argument("-st", "--sort", default=False,
                         type=bool, help="True to sort the output BibTeX entries alphabetically by ID")
+    parser.add_argument("-ol", "--online", action="store_true",
+                        help="True to use online resources to look for missing BibTeX entries in a semi-automated way.")
     args = parser.parse_args()
 
 
@@ -264,7 +298,7 @@ def main():
         abbr_dict = load_abbr_tsv(args.abbr_tsv)
     else:
         abbr_dict = []
-    normalize_bib(bib_db, all_bib_entries, output_path, args.deduplicate, removed_value_names, abbr_dict, args.sort)
+    normalize_bib(bib_db, all_bib_entries, output_path, args.deduplicate, removed_value_names, abbr_dict, args.sort, args.online)
 
 
 if __name__ == "__main__":
