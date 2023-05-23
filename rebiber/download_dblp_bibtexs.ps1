@@ -8,14 +8,18 @@ if (-Not (Test-Path -Path $raw_data_folder)) {
 }
 
 $base_conference_ids = @(
-    "nips/neurips{0}"
-    "icml/icml{0}"
-    "iclr/iclr{0}"
-    "iccv/iccv{0}"
-    "cvpr/cvpr{0}"
+ "aaai/aaai{0}"  
+ "nips/nips{0}"
+ "nips/neurips{0}"
+ "icml/icml{0}"
+ "iclr/iclr{0}"
+ "iccv/iccv{0}"
+ "cvpr/cvpr{0}"
+ "aistats/aistats{0}"
 )
+
 # "eccv/eccv{0}"
-$start_year = 2020
+$start_year = 2010
 $end_year = [int]$(get-date -Format yyyy) + 1
 
 
@@ -42,7 +46,7 @@ foreach ($base_conference_id in $base_conference_ids) {
                 $output_name = [string]::Format("{0}-{1}.bib", $conference_name, $idx + 1)
                 $output_path = Join-Path -Path $raw_data_folder -ChildPath $output_name
                 Write-Host "Downloading $output_path"
-                Invoke-WebRequest $url -OutFile $output_path
+                1 | Invoke-WebRequest $url -OutFile $output_path
                 if ((Get-Item $output_path).length -eq 0) {
                     Remove-Item $output_path
                     break

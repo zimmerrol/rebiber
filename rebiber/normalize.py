@@ -134,15 +134,17 @@ def normalize_bib(bib_db, all_bib_entries, output_bib_path, deduplicate=True, re
         # try to map the bib_entry to the keys in all_bib_entries
         found_bibitem = None
         if title in bib_db and title:
-            suggestions_dblp = dblp_lookup_service.get_suggestions(bib_entry_parsed.entries[0], 3)
-            suggestions_cr = crossref_lookup_service.get_suggestions(bib_entry_parsed.entries[0], 3)
-            suggestions = suggestions_dblp + suggestions_cr
-
-            suggestions = [s for s in suggestions if "journal" not in s or s["journal"] != "CoRR"]
-
-            choice = get_online_selection(bib_entry_parsed.entries[0]["title"], bib_entry_parsed.entries[0]["author"], suggestions)
-
-            print("choice:", choice)
+            # Uncomment to use new online look-up service.
+            #
+            # suggestions_dblp = dblp_lookup_service.get_suggestions(bib_entry_parsed.entries[0], 3)
+            # suggestions_cr = crossref_lookup_service.get_suggestions(bib_entry_parsed.entries[0], 3)
+            # suggestions = suggestions_dblp + suggestions_cr
+            #
+            # suggestions = [s for s in suggestions if "journal" not in s or s["journal"] != "CoRR"]
+            #
+            # choice = get_online_selection(bib_entry_parsed.entries[0]["title"], bib_entry_parsed.entries[0]["author"], suggestions)
+            # 
+            # print("choice:", choice)
 
             # update the bib_key to be the original_bib_key
             for line_idx in range(len(bib_db[title])):
