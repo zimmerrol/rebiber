@@ -6,6 +6,10 @@ import bibtexparser
 from bibtexparser.bwriter import BibTexWriter
 import os
 import re
+from typing import Dict, List
+import termcolor
+
+from rebiber.lookup_service import DBLPLookupService, CrossrefLookupService, cleanup_title
 
 
 
@@ -71,7 +75,44 @@ def post_processing(output_bib_entries, removed_value_names, abbr_dict, sort):
     return bibtexparser.dumps(parsed_entries, writer=writer)
 
 
+def get_online_selection(title: str, authors: str, suggestions: List[Dict[str, str]]) -> Dict[str, str]:
+    if len(suggestions) == 0:
+        return None
+
+    print(termcolor.colored("Multi Potential Matches Found!", "yellow"))
+    print(termcolor.colored("Original Title:   ", "green") + cleanup_title(title))
+    print(termcolor.colored("Original Authors: ", "green") + authors.replace("\n", " ").replace("  ", " "))
+    print()
+
+    LINE_UP = '\033[1A'
+    LINE_CLEAR = '\x1b[2K'
+
+    for i, s in enumerate(suggestions):
+        print(termcolor.colored(f"Option #{i}", "magenta"))
+        print(termcolor.colored("• Title:          ", "magenta") + cleanup_title(s["title"]))
+        print(termcolor.colored("• Authors:        ", "magenta") + s["author"].replace("\n", " ").replace("  ", " "))
+        print()
+
+    def cleanup(attempts):
+        n = len(suggestions) * 4 + 6 + attempts
+        for _ in range(n):
+            print(LINE_UP, end=LINE_CLEAR)
+
+    attempts = 0
+    while True:
+        attempts += 1
+        choice = input(f"Enter either a number from 0 to {len(suggestions) - 1} or n if no option is correct: ")
+        if choice == "n":
+            cleanup(attempts)
+            return None
+        elif choice.isdigit() and int(choice) < len(suggestions):
+            cleanup(attempts)
+            return suggestions[int(choice)]
+
+
 def normalize_bib(bib_db, all_bib_entries, output_bib_path, deduplicate=True, removed_value_names=[], abbr_dict=[], sort=False):
+    dblp_lookup_service = DBLPLookupService()
+    crossref_lookup_service = CrossrefLookupService()
     output_bib_entries = []
     num_converted = 0
     bib_keys = set()
@@ -93,6 +134,16 @@ def normalize_bib(bib_db, all_bib_entries, output_bib_path, deduplicate=True, re
         # try to map the bib_entry to the keys in all_bib_entries
         found_bibitem = None
         if title in bib_db and title:
+            suggestions_dblp = dblp_lookup_service.get_suggestions(bib_entry_parsed.entries[0], 3)
+            suggestions_cr = crossref_lookup_service.get_suggestions(bib_entry_parsed.entries[0], 3)
+            suggestions = suggestions_dblp + suggestions_cr
+
+            suggestions = [s for s in suggestions if "journal" not in s or s["journal"] != "CoRR"]
+
+            choice = get_online_selection(bib_entry_parsed.entries[0]["title"], bib_entry_parsed.entries[0]["author"], suggestions)
+
+            print("choice:", choice)
+
             # update the bib_key to be the original_bib_key
             for line_idx in range(len(bib_db[title])):
                 line = bib_db[title][line_idx]
