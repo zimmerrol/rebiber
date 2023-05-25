@@ -1,5 +1,5 @@
 import rebiber
-from rebiber.bib2json import normalize_title, load_bib_file
+from rebiber.bib2json import load_bib_file
 import argparse
 import json
 import bibtexparser
@@ -8,52 +8,33 @@ import os
 import re
 from typing import Dict, List
 import termcolor
+import utils as ut
 
 from rebiber.lookup_service import (
     DBLPLookupService,
     CrossrefLookupService,
-    cleanup_title,
 )
 
 
-def construct_bib_db(bib_list_file, start_dir=""):
-    with open(bib_list_file) as f:
+def construct_bib_db(bib_list_fn: str, bib_base_dir: str = ""):
+    """Constructs a bib database from a list of bib files stored in a text file."""
+    with open(bib_list_fn) as f:
         filenames = f.readlines()
     bib_db = {}
     for filename in filenames:
-        with open(start_dir + filename.strip()) as f:
+        with open(os.path.join(bib_base_dir, filename.strip())) as f:
             db = json.load(f)
             print("Loaded:", f.name, "Size:", len(db))
         bib_db.update(db)
     return bib_db
 
 
-def has_integer(line):
-    return any(char.isdigit() for char in line)
-
-
-def is_contain_var(line):
-    if "month=" in line.lower().replace(" ", ""):
-        return True  # special case
-    line_clean = line.lower().replace(" ", "")
-    if "=" in line_clean:
-        # We ask if there is {, ', ", or if there is an integer in the line
-        # (since integer input is allowed)
-        if ("{" in line_clean or '"' in line_clean or "'" in line_clean) or has_integer(
-            line
-        ):
-            return False
-        else:
-            return True
-    return False
-
-
-def post_processing(output_bib_entries, removed_value_names, abbr_dict, sort):
+def post_processing(output_bib_entries, removed_value_names, abbr_dict, sort: bool):
     bibparser = bibtexparser.bparser.BibTexParser(ignore_nonstandard_types=False)
     bib_entry_str = ""
     for entry in output_bib_entries:
         for line in entry:
-            if is_contain_var(line):
+            if ut.is_contain_var(line):
                 continue
             bib_entry_str += line
         bib_entry_str += "\n"
@@ -96,12 +77,12 @@ def get_online_selection(
     print(termcolor.colored("Multiple Potential Matches Found!", "yellow"))
     print(
         termcolor.colored("Original Title (Year): ", "green")
-        + cleanup_title(title)
+        + ut.cleanup_title(title)
         + (" (" + year + ")" if year is not None else "")
     )
     print(
         termcolor.colored("Original Authors:      ", "green")
-        + cleanup_title(authors)
+        + authors.replace("\n", " ").replace("  ", "")
     )
     print()
 
@@ -112,13 +93,13 @@ def get_online_selection(
         print(termcolor.colored(f"Option #{i}", "magenta"))
         print(
             termcolor.colored("• Title (Year):        ", "magenta")
-            + cleanup_title(s["title"])
+            + ut.cleanup_title(s["title"])
             + (" (" + s["year"] + ")" if "year" in s else "")
         )
         if "author" in s:
             print(
                 termcolor.colored("• Authors:             ", "magenta")
-                + cleanup_title(s["author"])
+                + s["author"].replace("\n", " ").replace("  ", "")
             )
         else:
             print(termcolor.colored("• Authors:             ", "magenta"))
@@ -148,10 +129,10 @@ def normalize_bib(
     bib_db,
     all_bib_entries,
     output_bib_path,
-    deduplicate=True,
+    deduplicate: bool = True,
     removed_value_names=[],
     abbr_dict=[],
-    sort=False,
+    sort: bool = False,
     use_lookup_services: bool = False,
 ):
     if use_lookup_services:
@@ -201,10 +182,8 @@ def normalize_bib(
     for bib_entry in all_bib_entries:
         # read the title from this bib_entry
         bibparser = bibtexparser.bparser.BibTexParser(ignore_nonstandard_types=False)
-        original_title = ""
-        original_bibkey = ""
         bib_entry_str = " ".join(
-            [line for line in bib_entry if not is_contain_var(line)]
+            [line for line in bib_entry if not ut.is_contain_var(line)]
         )
         bib_entry_parsed = bibtexparser.loads(bib_entry_str, bibparser)
         if (
@@ -217,7 +196,7 @@ def normalize_bib(
         if deduplicate and original_bibkey in bib_keys:
             continue
         bib_keys.add(original_bibkey)
-        title = normalize_title(original_title)
+        title = ut.cleanup_title(original_title)
         # try to map the bib_entry to the keys in all_bib_entries
         found_bibitem = None
         if title in bib_db and title:
@@ -307,27 +286,9 @@ def load_abbr_tsv(abbr_tsv_file):
     return abbr_dict
 
 
-def update(filepath):
-    def execute(cmd):
-        print(cmd)
-        os.system(cmd)
-
-    execute(
-        "wget https://github.com/yuchenlin/rebiber/archive/main.zip -O /tmp/rebiber.zip"
-    )
-    execute("unzip -o /tmp/rebiber.zip -d /tmp/")
-    execute(f"cp /tmp/rebiber-main/rebiber/bib_list.txt {filepath}/bib_list.txt")
-    execute(f"cp /tmp/rebiber-main/rebiber/abbr.tsv {filepath}/abbr.tsv")
-    execute(f"cp /tmp/rebiber-main/rebiber/data/* {filepath}/data/")
-    print("Done Updating.")
-
-
 def main():
     filepath = os.path.dirname(os.path.abspath(__file__)) + "/"
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-u", "--update", action="store_true", help="Update the data of bib and abbr."
-    )
     parser.add_argument(
         "-v", "--version", action="store_true", help="Print the version of Rebiber."
     )
@@ -387,9 +348,6 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.update:
-        update(filepath)
-        return
     if args.version:
         print(rebiber.__version__)
         return
@@ -403,6 +361,7 @@ def main():
         abbr_dict = load_abbr_tsv(args.abbr_tsv)
     else:
         abbr_dict = []
+
     normalize_bib(
         bib_db,
         all_bib_entries,

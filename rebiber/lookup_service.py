@@ -13,14 +13,6 @@ import warnings
 DictTree = Dict[str, Union[str, Dict[str, str]]]
 
 
-def cleanup_title(title: str) -> str:
-    title = re.sub(r"[^a-zA-Z0-9]", r" ", title)
-    title = re.sub(r"\s\s", r" ", title)
-    title = re.sub(r"  ", r" ", title)
-    title = title.strip()
-    return title
-
-
 class LookupService(ABC):
     @abstractmethod
     def get_suggestions(

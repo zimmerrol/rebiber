@@ -4,14 +4,10 @@ import bibtexparser
 import argparse
 from tqdm import tqdm
 import os
+from utils import cleanup_title
 
 
 filepath = os.path.dirname(os.path.abspath(__file__)) + "/"
-
-
-def normalize_title(title_str: str) -> str:
-    title_str = re.sub(r"[^a-zA-Z]", r"", title_str)
-    return title_str.lower().replace(" ", "").strip()
 
 
 def load_bib_file(bibpath: str) -> list[list[str]]:
@@ -74,7 +70,7 @@ def build_json(all_bib_entries: list[list[str]]) -> dict[str, list[str]]:
         ).lower()
         try:
             bib_entry_parsed = bibtexparser.loads(bib_entry_str)
-            bib_key = normalize_title(bib_entry_parsed.entries[0]["title"])
+            bib_key = cleanup_title(bib_entry_parsed.entries[0]["title"])
             all_bib_dict[bib_key] = bib_entry
         except Exception as e:
             print(bib_entry)
