@@ -1,0 +1,57 @@
+YearTitleDisplay {
+    layout: horizontal;
+    margin-bottom: 1;
+}
+
+YearTitleDisplay > #year {
+    min-width: 4;
+    margin-right: 4
+}
+
+YearTitleDisplay > #title {
+    min-width: 60;
+}
+
+ReferenceDisplay {
+    max-width: 100;
+    min-width: 70;
+    padding: 0 2;
+    border: heavy $panel;
+    border-title-color: $text;
+}
+
+ReferenceDisplay:focus-within {
+    background: $primary;
+    border-title-color: $secondary;
+    border: heavy $secondary-lighten-2;
+}
+
+ReferenceDisplay > Center > #choose {
+    border-top: tall $panel-lighten-2;
+    border-bottom: tall $panel-darken-3;
+}
+
+ReferenceDisplay > Center > #choose:focus {
+    background: $secondary;
+    border-top: tall $secondary-lighten-2;
+    border-bottom: tall $secondary-darken-3;
+}
+
+ReferenceDisplay > Center > #choose {
+    margin-top: 1;
+    height: 3
+}
+
+#references {
+    align: center middle;
+}
+
+ReferencePicker {
+    layout: horizontal;
+}
+
+ReferencePicker > #current-reference {
+    dock: left;
+    align-vertical: middle;
+}
+

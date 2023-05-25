@@ -7,9 +7,4 @@ from rebiber.normalize import construct_bib_db, normalize_bib
 
 __version__ = "1.1.3"
 
-__all__ = [
-    "__version__",
-    "load_bib_file",
-    "construct_bib_db",
-    "normalize_bib"
-]
+__all__ = ["__version__", "load_bib_file", "construct_bib_db", "normalize_bib"]
