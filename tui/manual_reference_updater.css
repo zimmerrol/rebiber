@@ -12,6 +12,10 @@ YearTitleDisplay > #title {
     min-width: 60;
 }
 
+ReferenceDisplay > #author {
+    min-width: 60;
+}
+
 ReferenceDisplay {
     max-width: 100;
     min-width: 70;

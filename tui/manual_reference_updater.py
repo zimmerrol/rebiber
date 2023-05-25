@@ -1,12 +1,13 @@
 import dataclasses
-from typing import Optional, Callable
+import inspect
+from typing import (Any, AsyncGenerator, Callable, Coroutine, Generator,
+                    Optional, Union)
 
-from textual.app import App, ComposeResult
-from textual.containers import ScrollableContainer, Center
-from textual.widgets import Button, Footer, Header, Static, Label, Placeholder
-from textual.reactive import reactive
 from textual import events
-import random
+from textual.app import App, ComposeResult
+from textual.containers import Center, ScrollableContainer
+from textual.reactive import Reactive, reactive
+from textual.widgets import Button, Footer, Header, Label, Static
 
 
 @dataclasses.dataclass
@@ -14,6 +15,13 @@ class Reference:
     year: int
     title: str
     author: str
+    data: object
+
+
+@dataclasses.dataclass
+class ReferenceChoice:
+    current_reference: Reference
+    chosen_reference: Reference
 
 
 class ReferenceChoiceTask:
@@ -28,8 +36,8 @@ class ReferenceChoiceTask:
 
 
 class YearTitleDisplay(Static):
-    year: int = reactive(0)
-    title: str = reactive("")
+    year: Reactive[int] = reactive(0)
+    title: Reactive[str] = reactive("")
     __composed = False
 
     def __init__(self, year: int, title: str, **kwargs) -> None:
@@ -40,12 +48,12 @@ class YearTitleDisplay(Static):
     def watch_year(self) -> None:
         if not self.__composed:
             return
-        self.query_one("#year").update(str(self.year))
+        self.query_one("#year", expect_type=Label).update(str(self.year))
 
     def watch_title(self) -> None:
         if not self.__composed:
             return
-        self.query_one("#title").update(self.title)
+        self.query_one("#title", expect_type=Label).update(self.title)
 
     def compose(self) -> ComposeResult:
         yield Label(str(self.year), id="year")
@@ -53,8 +61,22 @@ class YearTitleDisplay(Static):
         self.__composed = True
 
 
+async def await_me_maybe(callback, *args, **kwargs):
+    result = callback(*args, **kwargs)
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
+async def anext_maybe(generator: Union[Generator, AsyncGenerator]) -> Optional[Any]:
+    if hasattr(generator, "__anext__"):
+        return await generator.__anext__()
+    else:
+        return next(generator)
+
+
 class ReferenceDisplay(Static):
-    reference: Optional[Reference] = reactive(None)
+    reference: Reactive[Optional[Reference]] = reactive(None)
     __composed = False
     can_focus = False
     can_focus_children = True
@@ -63,7 +85,9 @@ class ReferenceDisplay(Static):
         self,
         reference: Optional[Reference],
         clickable: bool = True,
-        click_callback: Optional[Callable[[Reference], None]] = None,
+        click_callback: Optional[
+            Callable[[Reference], Union[None, Coroutine[Any, Any, None]]]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -71,9 +95,9 @@ class ReferenceDisplay(Static):
         self.clickable = clickable
         self.click_callback = click_callback
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         if self.click_callback is not None:
-            self.click_callback(self.reference)
+            await await_me_maybe(self.click_callback, self.reference)
 
     def compose(self) -> ComposeResult:
         year = self.reference.year if self.reference else 0
@@ -89,36 +113,46 @@ class ReferenceDisplay(Static):
         if not self.__composed:
             return
 
-        self.query_one("#yeartitle").year = self.reference.year
-        self.query_one("#yeartitle").title = self.reference.title
-        self.query_one("#author").update(self.reference.author)
+        if self.reference is None:
+            return
+
+        self.query_one("#yeartitle",
+                       expect_type=YearTitleDisplay).year = self.reference.year
+        self.query_one("#yeartitle",
+                       expect_type=YearTitleDisplay).title = self.reference.title
+        self.query_one("#author", expect_type=Label).update(self.reference.author)
 
 
 class ReferencePicker(Static):
-    available_references: list[Reference] = reactive([])
-    current_reference: Reference = reactive(None)
+    available_references: Reactive[list[Reference]] = reactive([])
+    current_reference: Reactive[Optional[Reference]] = reactive(None)
     __composed = False
     focusable = True
 
     def __init__(
         self,
-        get_next_choice_task_fn: Callable[[], ReferenceChoiceTask],
-        get_choice_fn: Callable[[Reference], None],
+        get_next_choice_task_fn: Callable[[], Optional[Union[
+            ReferenceChoiceTask, Coroutine[Any, Any, Optional[ReferenceChoiceTask]]]]],
+        get_choice_fn: Callable[[ReferenceChoice], None],
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.get_next_choice_task_fn = get_next_choice_task_fn
         self.get_choice_fn = get_choice_fn
 
-    def _refresh_choice_task(self) -> None:
+    async def _refresh_choice_task(self) -> None:
         print("refreshing choice task")
-        choice_task = self.get_next_choice_task_fn()
-        self.available_references = choice_task.available_references
-        self.current_reference = choice_task.current_reference
+        choice_task = await await_me_maybe(self.get_next_choice_task_fn)
+        if choice_task is not None:
+            self.available_references = choice_task.available_references
+            self.current_reference = choice_task.current_reference
 
-    def _save_choice(self, reference: Reference) -> None:
-        self.get_choice_fn(reference)
-        self._refresh_choice_task()
+    async def _save_choice(self, reference: Reference) -> None:
+        if self.current_reference is None:
+            raise RuntimeError("No current reference to compare to.")
+
+        self.get_choice_fn(ReferenceChoice(self.current_reference, reference))
+        await await_me_maybe(self._refresh_choice_task)
 
     def compose(self) -> ComposeResult:
         yield ReferenceDisplay(None, clickable=False, id="current-reference")
@@ -131,14 +165,14 @@ class ReferencePicker(Static):
         )
         self.__composed = True
 
-    def on_mount(self) -> None:
-        self._refresh_choice_task()
+    async def on_mount(self) -> None:
+        await await_me_maybe(self._refresh_choice_task)
 
     def watch_current_reference(self) -> None:
         if not self.__composed:
             return
 
-        current = self.query_one("#current-reference")
+        current = self.query_one("#current-reference", expect_type=ReferenceDisplay)
         current.reference = self.current_reference
 
     def on_key(self, event: events.Key) -> None:
@@ -146,7 +180,7 @@ class ReferencePicker(Static):
             idx = int(event.key) - 1
             if 0 <= idx < len(self.available_references):
                 rfd = self.query_one("#available-references").children[idx]
-                button = rfd.query_one("#choose")
+                button = rfd.query_one("#choose", expect_type=Button)
                 if button.has_focus:
                     button.action_press()
                 else:
@@ -191,41 +225,35 @@ class ManualReferenceUpdaterApp(App):
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
     ]
-    CSS_PATH = "tui.css"
+    CSS_PATH = "manual_reference_updater.css"
 
     TITLE = "Reference Updater"
 
-    def __init__(self):
+    def __init__(
+        self,
+        choice_task_iterator: Union[
+            Generator[ReferenceChoiceTask, None, None],
+            AsyncGenerator[ReferenceChoiceTask, None],
+        ],
+    ):
         super().__init__()
-        self.choice_tasks = self.load_choice_tasks()
-        self.choices = []
-
-    debug = True
-
-    def load_choice_tasks(self) -> list[ReferenceChoiceTask]:
-        return [
-            ReferenceChoiceTask(
-                Reference(2021, "0 Current Title" + str(random.random()), "An Author"),
-                [
-                    Reference(2021, "A Title" + str(random.random()), "An Author"),
-                    Reference(2020, "Title" + str(random.random()), "Another Author"),
-                    Reference(2021, "Title" + str(random.random()), "An Author"),
-                    Reference(2020, "Title" + str(random.random()), "Another Author"),
-                    Reference(2021, "itle" + str(random.random()), "An Author"),
-                    Reference(2020, "Title" + str(random.random()), "Another Author"),
-                ],
-            )
-            for _ in range(10)
-        ]
+        self.choice_task_iterator = choice_task_iterator
+        self.choices: list[ReferenceChoice] = []
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
 
-        def get_next_choice_task_fn() -> ReferenceChoiceTask:
-            return self.choice_tasks.pop(0)
+        async def get_next_choice_task_fn() -> Optional[ReferenceChoiceTask]:
+            try:
+                choice_task = await anext_maybe(self.choice_task_iterator)
+            except (StopAsyncIteration, StopIteration):
+                self.exit(self.choices)
+                return None
+            else:
+                return choice_task
 
-        def get_choice_fn(reference: Reference) -> None:
-            self.choices.append(reference)
+        def get_choice_fn(reference_choice: ReferenceChoice) -> None:
+            self.choices.append(reference_choice)
 
         yield Header()
         yield Footer()
@@ -236,18 +264,3 @@ class ManualReferenceUpdaterApp(App):
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
         self.dark = not self.dark
-
-    def action_load_available_references(self) -> None:
-        """An action to load demo references."""
-        self.query_one(
-            "#referencepicker"
-        ).available_references = self.load_references()[0]
-
-    def action_load_current_references(self) -> None:
-        """An action to load demo references."""
-        self.query_one("#referencepicker").current_reference = self.load_references()[1]
-
-
-if __name__ == "__main__":
-    app = ManualReferenceUpdaterApp()
-    app.run()

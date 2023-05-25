@@ -29,3 +29,11 @@ def cleanup_title(title: str) -> str:
     title = re.sub(r"  ", r" ", title)
     title = title.strip()
     return title
+
+
+def cleanup_author(author: str) -> str:
+    author = author.replace("\n", " ")
+    author = re.sub(r"\s\s", r" ", author)
+    author = re.sub(r"  ", r" ", author)
+    author = author.strip()
+    return author
