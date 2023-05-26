@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import inspect
 from typing import (Any, AsyncGenerator, Callable, Coroutine, Generator,
@@ -5,9 +6,12 @@ from typing import (Any, AsyncGenerator, Callable, Coroutine, Generator,
 
 from textual import events
 from textual.app import App, ComposeResult
-from textual.containers import Center, ScrollableContainer
+from textual.containers import Center, Middle, ScrollableContainer
+from textual.css.query import NoMatches
 from textual.reactive import Reactive, reactive
-from textual.widgets import Button, Footer, Header, Label, Static
+from textual.widget import Widget
+from textual.widgets import (Button, Footer, Label, LoadingIndicator,
+                             Placeholder, ProgressBar, Static)
 
 
 @dataclasses.dataclass
@@ -116,10 +120,12 @@ class ReferenceDisplay(Static):
         if self.reference is None:
             return
 
-        self.query_one("#yeartitle",
-                       expect_type=YearTitleDisplay).year = self.reference.year
-        self.query_one("#yeartitle",
-                       expect_type=YearTitleDisplay).title = self.reference.title
+        self.query_one(
+            "#yeartitle", expect_type=YearTitleDisplay
+        ).year = self.reference.year
+        self.query_one(
+            "#yeartitle", expect_type=YearTitleDisplay
+        ).title = self.reference.title
         self.query_one("#author", expect_type=Label).update(self.reference.author)
 
 
@@ -127,15 +133,22 @@ class ReferencePicker(Static):
     available_references: Reactive[list[Reference]] = reactive([])
     current_reference: Reactive[Optional[Reference]] = reactive(None)
     __composed = False
-    focusable = True
 
     def __init__(
         self,
-        get_next_choice_task_fn: Callable[[], Optional[Union[
-            ReferenceChoiceTask, Coroutine[Any, Any, Optional[ReferenceChoiceTask]]]]],
+        get_next_choice_task_fn: Callable[
+            [],
+            Optional[
+                Union[
+                    ReferenceChoiceTask,
+                    Coroutine[Any, Any, Optional[ReferenceChoiceTask]],
+                ]
+            ],
+        ],
         get_choice_fn: Callable[[ReferenceChoice], None],
         **kwargs,
     ):
+        Placeholder
         super().__init__(**kwargs)
         self.get_next_choice_task_fn = get_next_choice_task_fn
         self.get_choice_fn = get_choice_fn
@@ -155,18 +168,25 @@ class ReferencePicker(Static):
         await await_me_maybe(self._refresh_choice_task)
 
     def compose(self) -> ComposeResult:
-        yield ReferenceDisplay(None, clickable=False, id="current-reference")
-        yield ScrollableContainer(
-            *[
-                ReferenceDisplay(rf, click_callback=self._save_choice)
-                for rf in self.available_references
-            ],
-            id="available-references",
-        )
+        with Middle():
+            yield Label("Current Reference", classes="reference-picker-column-title")
+            yield ReferenceDisplay(None, clickable=False, id="current-reference")
+        with Widget():
+            yield Label(
+                "Alternative References", classes="reference-picker-column-title"
+            )
+            yield ScrollableContainer(
+                *[
+                    ReferenceDisplay(rf, click_callback=self._save_choice)
+                    for rf in self.available_references
+                ],
+                id="available-references",
+            )
         self.__composed = True
 
-    async def on_mount(self) -> None:
-        await await_me_maybe(self._refresh_choice_task)
+    def on_mount(self) -> None:
+        loop = asyncio.get_event_loop()
+        loop.create_task(self._refresh_choice_task())
 
     def watch_current_reference(self) -> None:
         if not self.__composed:
@@ -180,11 +200,16 @@ class ReferencePicker(Static):
             idx = int(event.key) - 1
             if 0 <= idx < len(self.available_references):
                 rfd = self.query_one("#available-references").children[idx]
-                button = rfd.query_one("#choose", expect_type=Button)
-                if button.has_focus:
-                    button.action_press()
-                else:
-                    button.focus(True)
+                try:
+                    button = rfd.query_one("#choose", expect_type=Button)
+                    if button.has_focus:
+                        button.action_press()
+                    else:
+                        button.focus(True)
+                except NoMatches:
+                    # This can happen if the user presses a button while the element
+                    # is being composed and the button has not been added yet.
+                    pass
         elif event.key == "up":
             rfds = self.query_one("#available-references").children
             current_idx = len(rfds)
@@ -235,10 +260,12 @@ class ManualReferenceUpdaterApp(App):
             Generator[ReferenceChoiceTask, None, None],
             AsyncGenerator[ReferenceChoiceTask, None],
         ],
+        n_tasks: Optional[int],
     ):
         super().__init__()
         self.choice_task_iterator = choice_task_iterator
         self.choices: list[ReferenceChoice] = []
+        self.n_tasks = n_tasks
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -246,6 +273,12 @@ class ManualReferenceUpdaterApp(App):
         async def get_next_choice_task_fn() -> Optional[ReferenceChoiceTask]:
             try:
                 choice_task = await anext_maybe(self.choice_task_iterator)
+                try:
+                    await self.query_one("#loadingindicator").remove()
+                    self.query_one("#referencepicker").visible = True
+                    self.query_one("#progressbar").visible = True
+                except NoMatches:
+                    pass
             except (StopAsyncIteration, StopIteration):
                 self.exit(self.choices)
                 return None
@@ -254,12 +287,20 @@ class ManualReferenceUpdaterApp(App):
 
         def get_choice_fn(reference_choice: ReferenceChoice) -> None:
             self.choices.append(reference_choice)
+            self.query_one("#progressbar", expect_type=ProgressBar).update(
+                progress=len(self.choices)
+            )
 
-        yield Header()
+        pbar = ProgressBar(id="progressbar", total=self.n_tasks)
+        pbar.visible = False
+        yield pbar
         yield Footer()
-        yield ReferencePicker(
+        yield LoadingIndicator(id="loadingindicator")
+        rp = ReferencePicker(
             get_next_choice_task_fn, get_choice_fn, id="referencepicker"
         )
+        rp.visible = False
+        yield rp
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""

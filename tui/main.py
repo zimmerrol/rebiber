@@ -2,6 +2,7 @@ import asyncio
 import itertools
 import json
 import os
+from typing import Any, Iterable
 
 import bibtexparser
 from bibtexparser.bparser import BibDatabase
@@ -50,8 +51,18 @@ def load_input_bibliography(input_fn: str) -> BibDatabase:
         return bibtexparser.load(input_f, bibparser).entries
 
 
+def chunk_iterable(
+    iterable: Iterable[Any], n: int, fillvalue: Any = None
+) -> Iterable[list[Any]]:
+    """Chunks an iterable into chunks of size n."""
+    args = [iter(iterable)] * n
+    return itertools.zip_longest(*args, fillvalue=fillvalue)
+
+
 def update_input_bibliography_online(
-    input_bibliography: list[dict[str, str]]
+    input_bibliography: list[dict[str, str]],
+    buffer_size: int = 15,
+    n_parallel: int = 5,
 ) -> list[dict[str, str]]:
     dblp_lookup_service = lus.DBLPLookupService()
     crossref_lookup_service = lus.CrossrefLookupService()
@@ -64,25 +75,40 @@ def update_input_bibliography_online(
             entry,
         )
 
-    async def def_get_online_suggestions(entry: dict[str, str]) -> list[dict[str, str]]:
+    async def get_online_suggestions(entry: dict[str, str]) -> list[dict[str, str]]:
         suggestions_dblp = dblp_lookup_service.get_suggestions(entry, 3)
         suggestions_cr = crossref_lookup_service.get_suggestions(entry, 3)
         return list(
             itertools.chain(*await asyncio.gather(suggestions_dblp, suggestions_cr))
         )
 
+    async def get_reference_choice_task(
+        entry: dict[str, str]
+    ) -> mru.ReferenceChoiceTask:
+        print(entry.get("title"))
+        suggestions = await get_online_suggestions(entry)
+
+        suggestions = [
+            s for s in suggestions if "journal" not in s or s["journal"] != "CoRR"
+        ]
+
+        srs = [get_reference_from_dict(s) for s in suggestions]
+        cr = get_reference_from_dict(entry)
+
+        return mru.ReferenceChoiceTask(cr, srs)
+
     async def produce(queue: asyncio.Queue):
-        for idx, entry in enumerate(input_bibliography):
-            suggestions = await def_get_online_suggestions(entry)
-
-            suggestions = [
-                s for s in suggestions if "journal" not in s or s["journal"] != "CoRR"
-            ]
-
-            srs = [get_reference_from_dict(s) for s in suggestions]
-            cr = get_reference_from_dict(entry)
-
-            await queue.put(mru.ReferenceChoiceTask(cr, srs))
+        # Add first rct separately to avoid waiting times at the beginning.
+        for entry_chunks in chunk_iterable(input_bibliography[1:], n_parallel):
+            rcts = await asyncio.gather(
+                *[
+                    get_reference_choice_task(entry)
+                    for entry in entry_chunks
+                    if entry is not None
+                ]
+            )
+            for rct in rcts:
+                await queue.put(rct)
 
         await queue.put(None)
 
@@ -94,8 +120,10 @@ def update_input_bibliography_online(
             else:
                 yield value
 
-    queue = asyncio.Queue(maxsize=15)
-    mrfua = mru.ManualReferenceUpdaterApp(get_reference_choice_task_generator(queue))
+    queue: asyncio.Queue[mru.ReferenceChoiceTask] = asyncio.Queue(maxsize=buffer_size)
+    mrfua = mru.ManualReferenceUpdaterApp(
+        get_reference_choice_task_generator(queue), len(input_bibliography)
+    )
     loop = asyncio.get_event_loop()
     loop.create_task(produce(queue))
     choices = mrfua.run()

@@ -10,10 +10,13 @@ YearTitleDisplay > #year {
 
 YearTitleDisplay > #title {
     min-width: 60;
+    width: 1fr;
 }
 
 ReferenceDisplay > #author {
     min-width: 60;
+    width: 1fr;
+    text-style: italic;
 }
 
 ReferenceDisplay {
@@ -22,6 +25,7 @@ ReferenceDisplay {
     padding: 0 2;
     border: heavy $panel;
     border-title-color: $text;
+    border-title-style: bold;
 }
 
 ReferenceDisplay:focus-within {
@@ -52,10 +56,32 @@ ReferenceDisplay > Center > #choose {
 
 ReferencePicker {
     layout: horizontal;
+    align-horizontal: center;
+    width: 1fr;
+    height: 1fr;
 }
 
-ReferencePicker > #current-reference {
-    dock: left;
+ReferencePicker > Middle > #current-reference {
+    /*dock: left;*/
     align-vertical: middle;
 }
 
+ReferencePicker > Widget {
+    width: auto;
+}
+
+ReferencePicker > Widget > #available-references {
+    width: auto;
+}
+
+ProgressBar {
+    width: 1fr
+}
+
+ProgressBar > Horizontal {
+    dock: right;
+}
+
+.reference-picker-column-title {
+    color: $accent;
+}
