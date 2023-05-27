@@ -13,13 +13,54 @@ from textual.widget import Widget
 from textual.widgets import (Button, Footer, Label, LoadingIndicator,
                              Placeholder, ProgressBar, Static)
 
+import utils as ut
+
 
 @dataclasses.dataclass
 class Reference:
     year: int
     title: str
     author: str
-    data: object
+    bibliography_values: dict[str, str]
+
+    @property
+    def reference_type(self):
+        def normalize(s: str, n_limit: int = 55) -> str:
+            """Normalize a reference_type string to be displayed in the UI."""
+            s = ut.cleanup_title(s)
+
+            if len(s) > n_limit:
+                s = s[:n_limit-3] + "..."
+            return s
+
+        recognized_reference_type_fns = {
+            "inproceedings": lambda: "Proceedings ({0})".format(
+                normalize(self.bibliography_values.get('booktitle', ""))
+            ),
+            "article": lambda: "Journal article ({0})".format(
+                self.bibliography_values.get(
+                    'journal', self.bibliography_values.get(
+                        'publisher', self.bibliography_values.get('doi', "")))
+            ),
+            "book": "Book",
+            "incollection": lambda: "Book chapter ({0})".format(
+                normalize(self.bibliography_values.get('booktitle', ""))
+            ),
+            "phdthesis": "PhD thesis",
+            "mastersthesis": "Master's thesis",
+            "techreport": "Techreport",
+            "misc": lambda: "Misc ({0})".format(
+                normalize(self.bibliography_values.get('howpublished', ""))
+            )
+        }
+        reference_type = recognized_reference_type_fns.get(
+            self.bibliography_values.get("ENTRYTYPE", None), lambda: "Other")()
+
+        # Remove trailing "()" if present.
+        if reference_type.endswith("()"):
+            return reference_type[:-3]
+
+        return reference_type
 
 
 @dataclasses.dataclass
@@ -107,7 +148,9 @@ class ReferenceDisplay(Static):
         year = self.reference.year if self.reference else 0
         title = self.reference.title if self.reference else ""
         author = self.reference.author if self.reference else ""
+        reference_type = self.reference.reference_type if self.reference else ""
         yield YearTitleDisplay(year, title, id="yeartitle")
+        yield Label(reference_type, id="type")
         yield Label(author, id="author")
         if self.clickable:
             yield Center(Button("Choose", id="choose"))
@@ -126,6 +169,7 @@ class ReferenceDisplay(Static):
         self.query_one(
             "#yeartitle", expect_type=YearTitleDisplay
         ).title = self.reference.title
+        self.query_one("#type", expect_type=Label).update(self.reference.reference_type)
         self.query_one("#author", expect_type=Label).update(self.reference.author)
 
 
@@ -133,6 +177,8 @@ class ReferencePicker(Static):
     available_references: Reactive[list[Reference]] = reactive([])
     current_reference: Reactive[Optional[Reference]] = reactive(None)
     __composed = False
+    can_focus_children = True
+    can_focus = True
 
     def __init__(
         self,
@@ -154,7 +200,6 @@ class ReferencePicker(Static):
         self.get_choice_fn = get_choice_fn
 
     async def _refresh_choice_task(self) -> None:
-        print("refreshing choice task")
         choice_task = await await_me_maybe(self.get_next_choice_task_fn)
         if choice_task is not None:
             self.available_references = choice_task.available_references
@@ -187,6 +232,7 @@ class ReferencePicker(Static):
     def on_mount(self) -> None:
         loop = asyncio.get_event_loop()
         loop.create_task(self._refresh_choice_task())
+        self.focus()
 
     def watch_current_reference(self) -> None:
         if not self.__composed:
@@ -236,6 +282,7 @@ class ReferencePicker(Static):
             while len(references.children) > 0:
                 references.children[0].remove()
 
+            rfds = []
             for idx, rf in enumerate(self.available_references):
                 rfd = ReferenceDisplay(rf, click_callback=self._save_choice)
                 if idx > 0:
@@ -243,12 +290,14 @@ class ReferencePicker(Static):
                 else:
                     # First element is the current reference; highlight it.
                     rfd.border_title = f"{idx + 1} (Current)"
-                references.mount(rfd)
+                rfds.append(rfd)
+            references.mount(*rfds)
 
 
 class ManualReferenceUpdaterApp(App):
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
+        ("s", "stop", "Stop selection"),
     ]
     CSS_PATH = "manual_reference_updater.css"
 
@@ -305,3 +354,7 @@ class ManualReferenceUpdaterApp(App):
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
         self.dark = not self.dark
+
+    def action_stop(self) -> None:
+        """An action to stop the app."""
+        self.exit(self.choices)

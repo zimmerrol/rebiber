@@ -1,4 +1,5 @@
 import re
+import hashlib
 
 
 def has_integer(line: str) -> bool:
@@ -37,3 +38,19 @@ def cleanup_author(author: str) -> str:
     author = re.sub(r"  ", r" ", author)
     author = author.strip()
     return author
+
+
+def get_md5_hash(fn: str) -> str:
+    """Compute the MD5 hash of a file.
+
+    Args:
+        fn (str): The path to the file.
+
+    Returns:
+        str: The MD5 hash of the file.
+    """
+    hash_md5 = hashlib.md5()
+    with open(fn, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()

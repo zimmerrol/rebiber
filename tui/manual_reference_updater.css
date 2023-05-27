@@ -19,6 +19,10 @@ ReferenceDisplay > #author {
     text-style: italic;
 }
 
+ReferenceDisplay > #type {
+    color: $text-disabled;
+}
+
 ReferenceDisplay {
     max-width: 100;
     min-width: 70;

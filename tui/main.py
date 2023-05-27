@@ -2,7 +2,8 @@ import asyncio
 import itertools
 import json
 import os
-from typing import Any, Iterable
+import sys
+from typing import Any, Iterable, Optional
 
 import bibtexparser
 from bibtexparser.bparser import BibDatabase
@@ -12,29 +13,63 @@ import config as cfg
 import lookup_service as lus
 import manual_reference_updater as mru
 import utils as ut
+import output_processor as op
+import glob
 
 
 def load_reference_bibliography(
-    bibliography_fns: str, base_dir: str = ""
+    bibliography_dir: str
 ) -> dict[str, list[str]]:
     """Loads a list of bibliographies from a list of files stored in a text file.
 
     Args:
-        bibliography_fns (str): The path to the text file containing the list of
-            bibliography files.
-        base_dir (str, optional): The base directory to prepend to the filenames.
+        bibliography_dir (str): Path to the folder containing the bibliography files
+            in the BibTeX format.
 
     Returns:
         dict[str, list[str]]: A dictionary mapping the id to its bibliography entry,
          line by line.
     """
-    with open(bibliography_fns) as f:
-        filenames = f.readlines()
+    # Check if a cache.json file exists in the bibliography folder and if so, use this
+    # one.
+    cache_fn = os.path.join(bibliography_dir, "cache.json")
+    filenames = glob.glob(os.path.join(bibliography_dir, "*.bib"))
+    current_hashes = {os.path.basename(fn): ut.get_md5_hash(fn) for fn in filenames}
+    if os.path.exists(cache_fn):
+        with open(cache_fn, "r") as cache_f:
+            cache = json.load(cache_f)
+
+            # Check if the hashes of the current files are consistent with those used
+            # to generate cache.json
+            cache_hashes = cache["bib_hashes"]
+            # If the hashes are consistent, return the cached bibliographies.
+            if cache_hashes == current_hashes:
+                print("Using cached pre-processed BibTex entries.")
+                return cache["bibliographies"]
+            # Otherwise, build new cache from scratch and overwrite the old one.
+
     bibliographies = {}
-    for filename in tqdm(filenames, leave=False, unit="bibliography"):
-        with open(os.path.join(base_dir, filename.strip())) as f:
-            db = json.load(f)
-        bibliographies.update(db)
+    bibparser = bibtexparser.bparser.BibTexParser(ignore_nonstandard_types=False)
+    bibparser.expect_multiple_parse = True
+
+    pbar = tqdm(filenames, desc="Parsing and preprocessing BibTeX files.")
+    for fn in pbar:
+        with open(fn, "r") as f:
+            bibtexparser.load(f, bibparser)
+            pbar.set_postfix_str("Processed {0} entries.".format(
+                len(bibparser.bib_database.entries)
+            ))
+
+    for entry in bibparser.bib_database.entries:
+        bibliographies[ut.cleanup_title(entry["title"])] = entry
+
+    # Save the cache.
+    with open(cache_fn, "w") as cache_f:
+        json.dump(
+            {"bib_hashes": current_hashes, "bibliographies": bibliographies}, cache_f
+        )
+    print("Saved pre-processed BibTex entries.")
+
     return bibliographies
 
 
@@ -59,11 +94,11 @@ def chunk_iterable(
     return itertools.zip_longest(*args, fillvalue=fillvalue)
 
 
-def update_input_bibliography_online(
+def process_bibliography_online(
     input_bibliography: list[dict[str, str]],
     buffer_size: int = 15,
     n_parallel: int = 5,
-) -> list[dict[str, str]]:
+) -> list[op.BaseProcessingCommand]:
     dblp_lookup_service = lus.DBLPLookupService()
     crossref_lookup_service = lus.CrossrefLookupService()
 
@@ -85,7 +120,6 @@ def update_input_bibliography_online(
     async def get_reference_choice_task(
         entry: dict[str, str]
     ) -> mru.ReferenceChoiceTask:
-        print(entry.get("title"))
         suggestions = await get_online_suggestions(entry)
 
         suggestions = [
@@ -126,19 +160,68 @@ def update_input_bibliography_online(
     )
     loop = asyncio.get_event_loop()
     loop.create_task(produce(queue))
-    choices = mrfua.run()
+    choices: Optional[list[mru.ReferenceChoice]] = mrfua.run()
 
-    return choices
+    output_commands = []
+    if choices is None:
+        sys.exit()
+
+    for rc in choices:
+        if rc.current_reference == rc.chosen_reference:
+            output_commands.append(op.KeepItemProcessingCommand(
+                rc.current_reference.bibliography_values))
+        else:
+            output_commands.append(op.UpdateItemProcessingCommand(
+                rc.current_reference.bibliography_values,
+                rc.chosen_reference.bibliography_values, "manual"))
+
+    return output_commands
+
+
+def process_bibliography_offline(input_bibliography: list[dict[str, str]],
+                                 offline_bibliography: dict[str, dict[str, str]]
+                                 ) -> list[op.BaseProcessingCommand]:
+    """Processes the input bibliography offline.
+
+    Args:
+        input_bibliography (list[dict[str, str]]): The input bibliography.
+        offline_bibliography (dict[str, dict[str, str]]): The reference
+            bibliography items indexed by their normalized titles.
+
+    Returns:
+        list[op.BaseProcessingCommand]: The processing commands.
+    """
+
+    output_commands = []
+    for ir in input_bibliography:
+        mor = offline_bibliography.get(
+            ut.cleanup_title(ir["title"]), None)
+        if mor is None:
+            output_commands.append(op.KeepItemProcessingCommand(ir))
+        else:
+            output_commands.append(op.UpdateItemProcessingCommand(ir, mor, "automated"))
+    return output_commands
 
 
 def main():
     config = cfg.get_config()
-    reference_bibliography = load_reference_bibliography(
-        config.bibliographies, os.path.dirname(os.path.abspath(__file__))
-    )
-
+    reference_bibliography = load_reference_bibliography(config.bibliography_folder)
     input_bibliography = load_input_bibliography(config.input)
-    update_input_bibliography_online(input_bibliography)
+    processing_commands_offline = process_bibliography_offline(input_bibliography,
+                                                               reference_bibliography)
+    update_processing_commands_offline = [
+        pc for pc in processing_commands_offline
+        if not isinstance(pc, op.KeepItemProcessingCommand)]
+
+    # Only update the bibliography online if no offline item has been found before.
+    input_bibliography_online = [pc.current_item for pc in processing_commands_offline
+                                 if isinstance(pc, op.KeepItemProcessingCommand)]
+    processing_commands_online = process_bibliography_online(input_bibliography_online)
+
+    processing_commands = (processing_commands_online +
+                           update_processing_commands_offline)
+
+    op.write_output(op.process_commands(processing_commands), config.output)
 
 
 if __name__ == "__main__":
