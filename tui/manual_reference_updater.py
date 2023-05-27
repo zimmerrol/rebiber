@@ -42,13 +42,13 @@ class Reference:
                     'journal', self.bibliography_values.get(
                         'publisher', self.bibliography_values.get('doi', "")))
             ),
-            "book": "Book",
+            "book": lambda: "Book",
             "incollection": lambda: "Book chapter ({0})".format(
                 normalize(self.bibliography_values.get('booktitle', ""))
             ),
-            "phdthesis": "PhD thesis",
-            "mastersthesis": "Master's thesis",
-            "techreport": "Techreport",
+            "phdthesis": lambda: "PhD thesis",
+            "mastersthesis": lambda: "Master's thesis",
+            "techreport": lambda: "Techreport",
             "misc": lambda: "Misc ({0})".format(
                 normalize(self.bibliography_values.get('howpublished', ""))
             )
@@ -90,10 +90,17 @@ class YearTitleDisplay(Static):
         self.year = year
         self.title = title
 
+    def _validate_year(self) -> str:
+        value = str(self.year)
+
+        if value == "0":
+            value = ""
+        return value
+
     def watch_year(self) -> None:
         if not self.__composed:
             return
-        self.query_one("#year", expect_type=Label).update(str(self.year))
+        self.query_one("#year", expect_type=Label).update(self._validate_year())
 
     def watch_title(self) -> None:
         if not self.__composed:
@@ -101,7 +108,7 @@ class YearTitleDisplay(Static):
         self.query_one("#title", expect_type=Label).update(self.title)
 
     def compose(self) -> ComposeResult:
-        yield Label(str(self.year), id="year")
+        yield Label(self._validate_year(), id="year")
         yield Label(self.title, id="title")
         self.__composed = True
 
