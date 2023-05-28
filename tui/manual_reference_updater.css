@@ -4,32 +4,32 @@ YearTitleDisplay {
 }
 
 YearTitleDisplay > #year {
-    min-width: 4;
+    width: 4;
     margin-right: 4
 }
 
 YearTitleDisplay > #title {
-    min-width: 60;
     width: 1fr;
-}
-
-ReferenceDisplay > #author {
-    min-width: 60;
-    width: 1fr;
-    text-style: italic;
-}
-
-ReferenceDisplay > #type {
-    color: $text-disabled;
 }
 
 ReferenceDisplay {
     max-width: 100;
-    min-width: 70;
+    /*min-width: 50;*/
     padding: 0 2;
     border: heavy $panel;
     border-title-color: $text;
     border-title-style: bold;
+}
+
+ReferenceDisplay > #author {
+    width: 1fr;
+    text-style: italic;
+    margin-bottom: 1;
+}
+
+ReferenceDisplay > #type {
+    width: 1fr;
+    color: $text-disabled;
 }
 
 ReferenceDisplay:focus-within {
@@ -50,12 +50,13 @@ ReferenceDisplay > Center > #choose:focus {
 }
 
 ReferenceDisplay > Center > #choose {
-    margin-top: 1;
     height: 3
 }
 
-#references {
-    align: center middle;
+ReferenceDisplay > #full-reference {
+    width: 1fr;
+    text-style: italic;
+    color: $text-disabled;
 }
 
 ReferencePicker {
@@ -71,11 +72,24 @@ ReferencePicker > Middle > #current-reference {
 }
 
 ReferencePicker > Widget {
-    width: auto;
+    /*width: auto;*/
 }
 
 ReferencePicker > Widget > #available-references {
-    width: auto;
+    width: 1fr;
+}
+
+ReferencePicker > #chosen-reference {
+    min-width: 30;
+}
+
+ReferencePicker > #references {
+    align: center middle;
+}
+
+ReferencePicker > .reference-picker-column-title {
+    color: $accent;
+    text-style: bold;
 }
 
 ProgressBar {
@@ -86,6 +100,12 @@ ProgressBar > Horizontal {
     dock: right;
 }
 
-.reference-picker-column-title {
-    color: $accent;
+ReferencePicker > .referencepicker-column {
+    width: 1fr;
+    max-width: 80;
+}
+
+ReferencePicker > .referencepicker-center-column {
+    margin-left: 1;
+    margin-right: 1;
 }

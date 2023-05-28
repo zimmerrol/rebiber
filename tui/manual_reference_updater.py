@@ -14,6 +14,7 @@ from textual.widgets import (Button, Footer, Label, LoadingIndicator,
                              Placeholder, ProgressBar, Static)
 
 import utils as ut
+import output_processor as op
 
 
 @dataclasses.dataclass
@@ -22,45 +23,6 @@ class Reference:
     title: str
     author: str
     bibliography_values: dict[str, str]
-
-    @property
-    def reference_type(self):
-        def normalize(s: str, n_limit: int = 55) -> str:
-            """Normalize a reference_type string to be displayed in the UI."""
-            s = ut.cleanup_title(s)
-
-            if len(s) > n_limit:
-                s = s[:n_limit-3] + "..."
-            return s
-
-        recognized_reference_type_fns = {
-            "inproceedings": lambda: "Proceedings ({0})".format(
-                normalize(self.bibliography_values.get('booktitle', ""))
-            ),
-            "article": lambda: "Journal article ({0})".format(
-                self.bibliography_values.get(
-                    'journal', self.bibliography_values.get(
-                        'publisher', self.bibliography_values.get('doi', "")))
-            ),
-            "book": lambda: "Book",
-            "incollection": lambda: "Book chapter ({0})".format(
-                normalize(self.bibliography_values.get('booktitle', ""))
-            ),
-            "phdthesis": lambda: "PhD thesis",
-            "mastersthesis": lambda: "Master's thesis",
-            "techreport": lambda: "Techreport",
-            "misc": lambda: "Misc ({0})".format(
-                normalize(self.bibliography_values.get('howpublished', ""))
-            )
-        }
-        reference_type = recognized_reference_type_fns.get(
-            self.bibliography_values.get("ENTRYTYPE", None), lambda: "Other")()
-
-        # Remove trailing "()" if present.
-        if reference_type.endswith("()"):
-            return reference_type[:-3]
-
-        return reference_type
 
 
 @dataclasses.dataclass
@@ -140,25 +102,76 @@ class ReferenceDisplay(Static):
         click_callback: Optional[
             Callable[[Reference], Union[None, Coroutine[Any, Any, None]]]
         ] = None,
+        show_full_reference: bool = False,
+        show_author: bool = True,
+        show_yeartitle: bool = True,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.reference = reference
         self.clickable = clickable
         self.click_callback = click_callback
+        self.show_full_reference = show_full_reference
+        self.show_author = show_author
+        self.show_yeartitle = show_yeartitle
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if self.click_callback is not None:
             await await_me_maybe(self.click_callback, self.reference)
 
+    def __get_reference_type(self):
+        """Return a normalized string describing the type of the reference."""
+        def normalize(s: str, n_limit: int = 55) -> str:
+            """Normalize a reference_type string to be displayed in the UI."""
+            s = ut.cleanup_title(s)
+
+            if len(s) > n_limit:
+                s = s[:n_limit - 3] + "..."
+            return s
+
+        recognized_reference_type_fns = {
+            "inproceedings": lambda: "Proceedings ({0})".format(
+                normalize(self.reference.bibliography_values.get('booktitle', ""))
+            ),
+            "article": lambda: "Journal article ({0})".format(
+                self.reference.bibliography_values.get(
+                    'journal', self.reference.bibliography_values.get(
+                        'publisher', self.reference.bibliography_values.get('doi', "")))
+            ),
+            "book": lambda: "Book",
+            "incollection": lambda: "Book chapter ({0})".format(
+                normalize(self.reference.bibliography_values.get('booktitle', ""))
+            ),
+            "phdthesis": lambda: "PhD thesis",
+            "mastersthesis": lambda: "Master's thesis",
+            "techreport": lambda: "Techreport",
+            "misc": lambda: "Misc ({0})".format(
+                normalize(self.reference.bibliography_values.get('howpublished', ""))
+            )
+        }
+        reference_type = recognized_reference_type_fns.get(
+            self.reference.bibliography_values.get("ENTRYTYPE", None), lambda: "Other")()
+
+        # Remove trailing "()" if present.
+        if reference_type.endswith("()"):
+            return reference_type[:-3]
+
+        return reference_type
+
     def compose(self) -> ComposeResult:
         year = self.reference.year if self.reference else 0
         title = self.reference.title if self.reference else ""
         author = self.reference.author if self.reference else ""
-        reference_type = self.reference.reference_type if self.reference else ""
-        yield YearTitleDisplay(year, title, id="yeartitle")
-        yield Label(reference_type, id="type")
-        yield Label(author, id="author")
+        reference_type = self.__get_reference_type() if self.reference else ""
+        full_reference = "\n".join(op.transform_reference_dict_to_lines(
+            self.reference.bibliography_values)) if self.reference else ""
+        if self.show_yeartitle:
+            yield YearTitleDisplay(year, title, id="yeartitle")
+            yield Label(reference_type, id="type")
+        if self.show_author:
+            yield Label(author, id="author")
+        if self.show_full_reference:
+            yield Label(full_reference, id="full-reference")
         if self.clickable:
             yield Center(Button("Choose", id="choose"))
         self.__composed = True
@@ -170,14 +183,21 @@ class ReferenceDisplay(Static):
         if self.reference is None:
             return
 
-        self.query_one(
-            "#yeartitle", expect_type=YearTitleDisplay
-        ).year = self.reference.year
-        self.query_one(
-            "#yeartitle", expect_type=YearTitleDisplay
-        ).title = self.reference.title
-        self.query_one("#type", expect_type=Label).update(self.reference.reference_type)
-        self.query_one("#author", expect_type=Label).update(self.reference.author)
+        if self.show_yeartitle:
+            self.query_one(
+                "#yeartitle", expect_type=YearTitleDisplay
+            ).year = self.reference.year
+            self.query_one(
+                "#yeartitle", expect_type=YearTitleDisplay
+            ).title = self.reference.title
+            self.query_one("#type", expect_type=Label).update(self.__get_reference_type())
+        if self.show_author:
+            self.query_one("#author", expect_type=Label).update(self.reference.author)
+        if self.show_full_reference:
+            self.query_one(
+                "#full-reference", expect_type=Label
+            ).update("\n".join(op.transform_reference_dict_to_lines(
+                self.reference.bibliography_values)))
 
 
 class ReferencePicker(Static):
@@ -220,10 +240,11 @@ class ReferencePicker(Static):
         await await_me_maybe(self._refresh_choice_task)
 
     def compose(self) -> ComposeResult:
-        with Middle():
+        with Middle(classes="referencepicker-column"):
             yield Label("Current Reference", classes="reference-picker-column-title")
-            yield ReferenceDisplay(None, clickable=False, id="current-reference")
-        with Widget():
+            yield ReferenceDisplay(None, clickable=False, id="current-reference",
+                                   show_full_reference=True)
+        with Widget(classes="referencepicker-column referencepicker-center-column"):
             yield Label(
                 "Alternative References", classes="reference-picker-column-title"
             )
@@ -234,6 +255,12 @@ class ReferencePicker(Static):
                 ],
                 id="available-references",
             )
+        with Middle(classes="referencepicker-column", id="chosen-reference-column"):
+            yield Label("Details on Chosen Reference",
+                        classes="reference-picker-column-title")
+            yield ReferenceDisplay(None, clickable=False, id="chosen-reference",
+                                   show_full_reference=True, show_yeartitle=False,
+                                   show_author=False)
         self.__composed = True
 
     def on_mount(self) -> None:
@@ -247,6 +274,14 @@ class ReferencePicker(Static):
 
         current = self.query_one("#current-reference", expect_type=ReferenceDisplay)
         current.reference = self.current_reference
+
+    def on_descendant_focus(self, event: events.DescendantFocus):
+        if isinstance(event._sender.parent.parent, ReferenceDisplay):
+            chosen_reference = event._sender.parent.parent.reference
+            display = self.query_one("#chosen-reference", expect_type=ReferenceDisplay)
+            display.reference = chosen_reference
+
+            self.query_one("#chosen-reference-column").visible = True
 
     def on_key(self, event: events.Key) -> None:
         if event.key in [str(d) for d in range(9)]:
@@ -283,6 +318,8 @@ class ReferencePicker(Static):
     def watch_available_references(self) -> None:
         if not self.__composed:
             return
+
+        self.query_one("#chosen-reference-column").visible = False
 
         references = self.query_one("#available-references")
         if references:

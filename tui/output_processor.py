@@ -57,6 +57,17 @@ def process_commands(commands: list[BaseProcessingCommand]) -> list[dict[str, st
     return [command.output for command in commands]
 
 
+def transform_reference_dict_to_lines(item: dict[str, str]) -> list[str]:
+    """Transform a reference dictionary to a list of lines."""
+    item_lines = [f"@{item['ENTRYTYPE']}{{{item['ID']},"]
+    for key, value in item.items():
+        if key == "ENTRYTYPE" or key == "ID":
+            continue
+        item_lines += [f"  {key} = {{{value}}},"]
+    item_lines += ["}"]
+    return item_lines
+
+
 def write_output(output: list[dict[str, str]], output_fn: str) -> None:
     """Write the output to a file in BibTeX format.
 
@@ -66,14 +77,7 @@ def write_output(output: list[dict[str, str]], output_fn: str) -> None:
     """
     all_lines = []
     for item in output:
-        item_lines = [f"@{item['ENTRYTYPE']}{{{item['ID']},"]
-        for key, value in item.items():
-            if key == "ENTRYTYPE" or key == "ID":
-                continue
-            item_lines += [f"  {key} = {{{value}}},"]
-        item_lines += ["}", ""]
-
-        all_lines += item_lines
+        all_lines += transform_reference_dict_to_lines(item) + [""]
 
     # Remove the last newline.
     if len(all_lines) > 0:
