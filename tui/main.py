@@ -1,9 +1,10 @@
 import asyncio
+import glob
 import itertools
 import json
 import os
 import sys
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Collection
 
 import bibtexparser
 from bibtexparser.bparser import BibDatabase
@@ -12,14 +13,11 @@ from tqdm import tqdm
 import config as cfg
 import lookup_service as lus
 import manual_reference_updater as mru
-import utils as ut
 import output_processor as op
-import glob
+import utils as ut
 
 
-def load_reference_bibliography(
-    bibliography_dir: str
-) -> dict[str, list[str]]:
+def load_reference_bibliography(bibliography_dir: str) -> dict[str, list[str]]:
     """Loads a list of bibliographies from a list of files stored in a text file.
 
     Args:
@@ -56,9 +54,9 @@ def load_reference_bibliography(
     for fn in pbar:
         with open(fn, "r") as f:
             bibtexparser.load(f, bibparser)
-            pbar.set_postfix_str("Processed {0} entries.".format(
-                len(bibparser.bib_database.entries)
-            ))
+            pbar.set_postfix_str(
+                "Processed {0} entries.".format(len(bibparser.bib_database.entries))
+            )
 
     for entry in bibparser.bib_database.entries:
         bibliographies[ut.cleanup_title(entry["title"])] = entry
@@ -162,25 +160,31 @@ def process_bibliography_online(
     loop.create_task(produce(queue))
     choices: Optional[list[mru.ReferenceChoice]] = mrfua.run()
 
-    output_commands = []
+    output_commands: list[op.BaseProcessingCommand] = []
     if choices is None:
         sys.exit()
 
     for rc in choices:
         if rc.current_reference == rc.chosen_reference:
-            output_commands.append(op.KeepItemProcessingCommand(
-                rc.current_reference.bibliography_values))
+            output_commands.append(
+                op.KeepItemProcessingCommand(rc.current_reference.bibliography_values)
+            )
         else:
-            output_commands.append(op.UpdateItemProcessingCommand(
-                rc.current_reference.bibliography_values,
-                rc.chosen_reference.bibliography_values, "manual"))
+            output_commands.append(
+                op.UpdateItemProcessingCommand(
+                    rc.current_reference.bibliography_values,
+                    rc.chosen_reference.bibliography_values,
+                    "manual",
+                )
+            )
 
     return output_commands
 
 
-def process_bibliography_offline(input_bibliography: list[dict[str, str]],
-                                 offline_bibliography: dict[str, dict[str, str]]
-                                 ) -> list[op.BaseProcessingCommand]:
+def process_bibliography_offline(
+    input_bibliography: list[dict[str, str]],
+    offline_bibliography: dict[str, dict[str, str]],
+) -> list[op.BaseProcessingCommand]:
     """Processes the input bibliography offline.
 
     Args:
@@ -192,10 +196,9 @@ def process_bibliography_offline(input_bibliography: list[dict[str, str]],
         list[op.BaseProcessingCommand]: The processing commands.
     """
 
-    output_commands = []
+    output_commands: list[op.BaseProcessingCommand] = []
     for ir in input_bibliography:
-        mor = offline_bibliography.get(
-            ut.cleanup_title(ir["title"]), None)
+        mor = offline_bibliography.get(ut.cleanup_title(ir["title"]), None)
         if mor is None:
             output_commands.append(op.KeepItemProcessingCommand(ir))
         else:
@@ -207,19 +210,26 @@ def main():
     config = cfg.get_config()
     reference_bibliography = load_reference_bibliography(config.bibliography_folder)
     input_bibliography = load_input_bibliography(config.input)
-    processing_commands_offline = process_bibliography_offline(input_bibliography,
-                                                               reference_bibliography)
+    processing_commands_offline = process_bibliography_offline(
+        input_bibliography, reference_bibliography
+    )
     update_processing_commands_offline = [
-        pc for pc in processing_commands_offline
-        if not isinstance(pc, op.KeepItemProcessingCommand)]
+        pc
+        for pc in processing_commands_offline
+        if not isinstance(pc, op.KeepItemProcessingCommand)
+    ]
 
     # Only update the bibliography online if no offline item has been found before.
-    input_bibliography_online = [pc.current_item for pc in processing_commands_offline
-                                 if isinstance(pc, op.KeepItemProcessingCommand)]
+    input_bibliography_online = [
+        pc.current_item
+        for pc in processing_commands_offline
+        if isinstance(pc, op.KeepItemProcessingCommand)
+    ]
     processing_commands_online = process_bibliography_online(input_bibliography_online)
 
-    processing_commands = (processing_commands_online +
-                           update_processing_commands_offline)
+    processing_commands = (
+        processing_commands_online + update_processing_commands_offline
+    )
 
     op.write_output(op.process_commands(processing_commands), config.output)
 

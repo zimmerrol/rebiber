@@ -13,8 +13,8 @@ from textual.widget import Widget
 from textual.widgets import (Button, Footer, Label, LoadingIndicator,
                              Placeholder, ProgressBar, Static)
 
-import utils as ut
 import output_processor as op
+import utils as ut
 
 
 @dataclasses.dataclass
@@ -121,36 +121,41 @@ class ReferenceDisplay(Static):
 
     def __get_reference_type(self):
         """Return a normalized string describing the type of the reference."""
+
         def normalize(s: str, n_limit: int = 55) -> str:
             """Normalize a reference_type string to be displayed in the UI."""
             s = ut.cleanup_title(s)
 
             if len(s) > n_limit:
-                s = s[:n_limit - 3] + "..."
+                s = s[: n_limit - 3] + "..."
             return s
 
         recognized_reference_type_fns = {
             "inproceedings": lambda: "Proceedings ({0})".format(
-                normalize(self.reference.bibliography_values.get('booktitle', ""))
+                normalize(self.reference.bibliography_values.get("booktitle", ""))
             ),
             "article": lambda: "Journal article ({0})".format(
                 self.reference.bibliography_values.get(
-                    'journal', self.reference.bibliography_values.get(
-                        'publisher', self.reference.bibliography_values.get('doi', "")))
+                    "journal",
+                    self.reference.bibliography_values.get(
+                        "publisher", self.reference.bibliography_values.get("doi", "")
+                    ),
+                )
             ),
             "book": lambda: "Book",
             "incollection": lambda: "Book chapter ({0})".format(
-                normalize(self.reference.bibliography_values.get('booktitle', ""))
+                normalize(self.reference.bibliography_values.get("booktitle", ""))
             ),
             "phdthesis": lambda: "PhD thesis",
             "mastersthesis": lambda: "Master's thesis",
             "techreport": lambda: "Techreport",
             "misc": lambda: "Misc ({0})".format(
-                normalize(self.reference.bibliography_values.get('howpublished', ""))
-            )
+                normalize(self.reference.bibliography_values.get("howpublished", ""))
+            ),
         }
         reference_type = recognized_reference_type_fns.get(
-            self.reference.bibliography_values.get("ENTRYTYPE", None), lambda: "Other")()
+            self.reference.bibliography_values.get("ENTRYTYPE", None), lambda: "Other"
+        )()
 
         # Remove trailing "()" if present.
         if reference_type.endswith("()"):
@@ -163,8 +168,13 @@ class ReferenceDisplay(Static):
         title = self.reference.title if self.reference else ""
         author = self.reference.author if self.reference else ""
         reference_type = self.__get_reference_type() if self.reference else ""
-        full_reference = "\n".join(op.transform_reference_dict_to_lines(
-            self.reference.bibliography_values)) if self.reference else ""
+        full_reference = (
+            "\n".join(
+                op.transform_reference_dict_to_lines(self.reference.bibliography_values)
+            )
+            if self.reference
+            else ""
+        )
         if self.show_yeartitle:
             yield YearTitleDisplay(year, title, id="yeartitle")
             yield Label(reference_type, id="type")
@@ -190,14 +200,19 @@ class ReferenceDisplay(Static):
             self.query_one(
                 "#yeartitle", expect_type=YearTitleDisplay
             ).title = self.reference.title
-            self.query_one("#type", expect_type=Label).update(self.__get_reference_type())
+            self.query_one("#type", expect_type=Label).update(
+                self.__get_reference_type()
+            )
         if self.show_author:
             self.query_one("#author", expect_type=Label).update(self.reference.author)
         if self.show_full_reference:
-            self.query_one(
-                "#full-reference", expect_type=Label
-            ).update("\n".join(op.transform_reference_dict_to_lines(
-                self.reference.bibliography_values)))
+            self.query_one("#full-reference", expect_type=Label).update(
+                "\n".join(
+                    op.transform_reference_dict_to_lines(
+                        self.reference.bibliography_values
+                    )
+                )
+            )
 
 
 class ReferencePicker(Static):
@@ -245,8 +260,9 @@ class ReferencePicker(Static):
     def compose(self) -> ComposeResult:
         with Middle(classes="referencepicker-column"):
             yield Label("Current Reference", classes="reference-picker-column-title")
-            yield ReferenceDisplay(None, clickable=False, id="current-reference",
-                                   show_full_reference=True)
+            yield ReferenceDisplay(
+                None, clickable=False, id="current-reference", show_full_reference=True
+            )
         with Widget(classes="referencepicker-column referencepicker-center-column"):
             yield Label(
                 "Alternative References", classes="reference-picker-column-title"
@@ -258,13 +274,20 @@ class ReferencePicker(Static):
                 ],
                 id="available-references",
             )
-        with Middle(classes="referencepicker-column", id="chosen-reference-column"
-                    ) as col:
-            yield Label("Details on Chosen Reference",
-                        classes="reference-picker-column-title")
-            yield ReferenceDisplay(None, clickable=False, id="chosen-reference",
-                                   show_full_reference=True, show_yeartitle=False,
-                                   show_author=False)
+        with Middle(
+            classes="referencepicker-column", id="chosen-reference-column"
+        ) as col:
+            yield Label(
+                "Details on Chosen Reference", classes="reference-picker-column-title"
+            )
+            yield ReferenceDisplay(
+                None,
+                clickable=False,
+                id="chosen-reference",
+                show_full_reference=True,
+                show_yeartitle=False,
+                show_author=False,
+            )
             col.display = self.show_chosen_reference_details
         self.__composed = True
 
@@ -401,8 +424,7 @@ class ManualReferenceUpdaterApp(App):
         yield Footer()
         yield LoadingIndicator(id="loadingindicator")
         rp = ReferencePicker(
-            get_next_choice_task_fn, get_choice_fn,
-            id="referencepicker"
+            get_next_choice_task_fn, get_choice_fn, id="referencepicker"
         )
         rp.visible = False
         yield rp
