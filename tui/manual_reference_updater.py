@@ -205,13 +205,16 @@ class ReferenceDisplay(Static):
             )
         if self.show_author:
             self.query_one("#author", expect_type=Label).update(self.reference.author)
+        from rich.syntax import Syntax
         if self.show_full_reference:
-            self.query_one("#full-reference", expect_type=Label).update(
-                "\n".join(
+            bibtex = "\n".join(
                     op.transform_reference_dict_to_lines(
                         self.reference.bibliography_values
                     )
                 )
+            self.query_one("#full-reference", expect_type=Label).update(
+                Syntax(bibtex, "bibtex", theme="material", line_numbers=False,
+                       word_wrap=True, dedent=True)
             )
 
 
