@@ -203,6 +203,7 @@ class ReferenceDisplay(Static):
 class ReferencePicker(Static):
     available_references: Reactive[list[Reference]] = reactive([])
     current_reference: Reactive[Optional[Reference]] = reactive(None)
+    show_chosen_reference_details: Reactive[bool] = reactive(True)
     __composed = False
     can_focus_children = True
     can_focus = True
@@ -219,12 +220,14 @@ class ReferencePicker(Static):
             ],
         ],
         get_choice_fn: Callable[[ReferenceChoice], None],
+        show_chosen_reference_details: bool = True,
         **kwargs,
     ):
         Placeholder
         super().__init__(**kwargs)
         self.get_next_choice_task_fn = get_next_choice_task_fn
         self.get_choice_fn = get_choice_fn
+        self.show_chosen_reference_details = show_chosen_reference_details
 
     async def _refresh_choice_task(self) -> None:
         choice_task = await await_me_maybe(self.get_next_choice_task_fn)
@@ -255,12 +258,14 @@ class ReferencePicker(Static):
                 ],
                 id="available-references",
             )
-        with Middle(classes="referencepicker-column", id="chosen-reference-column"):
+        with Middle(classes="referencepicker-column", id="chosen-reference-column"
+                    ) as col:
             yield Label("Details on Chosen Reference",
                         classes="reference-picker-column-title")
             yield ReferenceDisplay(None, clickable=False, id="chosen-reference",
                                    show_full_reference=True, show_yeartitle=False,
                                    show_author=False)
+            col.display = self.show_chosen_reference_details
         self.__composed = True
 
     def on_mount(self) -> None:
@@ -271,9 +276,14 @@ class ReferencePicker(Static):
     def watch_current_reference(self) -> None:
         if not self.__composed:
             return
-
         current = self.query_one("#current-reference", expect_type=ReferenceDisplay)
         current.reference = self.current_reference
+
+    def watch_show_chosen_reference_details(self) -> None:
+        if not self.__composed:
+            return
+        current = self.query_one("#chosen-reference-column", expect_type=Middle)
+        current.display = self.show_chosen_reference_details
 
     def on_descendant_focus(self, event: events.DescendantFocus):
         if isinstance(event._sender.parent.parent, ReferenceDisplay):
@@ -340,7 +350,8 @@ class ReferencePicker(Static):
 
 class ManualReferenceUpdaterApp(App):
     BINDINGS = [
-        ("d", "toggle_dark", "Toggle dark mode"),
+        ("m", "toggle_dark", "Toggle dark mode"),
+        ("d", "toggle_reference_picker_details", "Toggle details of chosen reference"),
         ("s", "stop", "Stop selection"),
     ]
     CSS_PATH = "manual_reference_updater.css"
@@ -390,10 +401,16 @@ class ManualReferenceUpdaterApp(App):
         yield Footer()
         yield LoadingIndicator(id="loadingindicator")
         rp = ReferencePicker(
-            get_next_choice_task_fn, get_choice_fn, id="referencepicker"
+            get_next_choice_task_fn, get_choice_fn,
+            id="referencepicker"
         )
         rp.visible = False
         yield rp
+
+    def action_toggle_reference_picker_details(self):
+        """An action to toggle whether the details of the chosen reference are shown."""
+        rp = self.query_one("#referencepicker", expect_type=ReferencePicker)
+        rp.show_chosen_reference_details = not rp.show_chosen_reference_details
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
