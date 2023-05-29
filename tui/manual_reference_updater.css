@@ -14,7 +14,6 @@ YearTitleDisplay > #title {
 
 ReferenceDisplay {
     max-width: 100;
-    /*min-width: 50;*/
     padding: 0 2;
     border: heavy $panel;
     border-title-color: $text;
@@ -67,12 +66,7 @@ ReferencePicker {
 }
 
 ReferencePicker > Middle > #current-reference {
-    /*dock: left;*/
     align-vertical: middle;
-}
-
-ReferencePicker > Widget {
-    /*width: auto;*/
 }
 
 ReferencePicker > Widget > #available-references {
