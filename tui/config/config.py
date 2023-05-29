@@ -58,7 +58,8 @@ class Config(dataclass_wizard.YAMLWizard):
         help="The list of conference abbreviation data.",
     )
     deduplicate: bool = ut.cli_parameter(
-        "d", default=True, help="True to remove entries with duplicate keys."
+        "d", default=True, help="True to remove entries that are duplicates based on"
+        "either their properties or their ID."
     )
     shorten: bool = ut.cli_parameter(
         "s", default=False, help="True to shorten the conference names."
@@ -71,7 +72,7 @@ class Config(dataclass_wizard.YAMLWizard):
     sort: bool = ut.cli_parameter(
         "st",
         default=False,
-        help="True to sort the output BibTeX entries " "alphabetically by ID.",
+        help="True to sort the output BibTeX entries alphabetically by ID.",
     )
     online_updater: OnlineUpdaterConfig = ut.cli_parameter(
         "ol",

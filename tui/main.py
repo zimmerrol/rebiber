@@ -247,7 +247,9 @@ def main():
         processing_commands_online + update_processing_commands_offline
     )
 
-    op.write_output(op.process_commands(processing_commands), config.output)
+    op.write_output(
+        op.process_commands(processing_commands, config.sort, config.deduplicate),
+        config.output)
 
 
 if __name__ == "__main__":

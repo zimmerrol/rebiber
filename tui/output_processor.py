@@ -52,9 +52,48 @@ class KeepItemProcessingCommand(BaseProcessingCommand):
         return self.current_item
 
 
-def process_commands(commands: list[BaseProcessingCommand]) -> list[dict[str, str]]:
-    """Process the commands and return the output bibliography items."""
-    return [command.output for command in commands]
+def process_commands(commands: list[BaseProcessingCommand],
+                     sort: bool, deduplicate: bool) -> list[dict[str, str]]:
+    """Process the commands and return the output bibliography items.
+
+    Args:
+        commands (list[BaseProcessingCommand]): The processing commands.
+        sort (bool): Whether to sort the output bibliography items by their key.
+        deduplicate (bool): Whether to deduplicate the output bibliography items.
+    """
+    entries = [command.output for command in commands]
+
+    if sort:
+        entries = sorted(entries, key=lambda x: x["ID"])
+
+    if deduplicate:
+        # Remove duplicate entries based on their ID.
+        duplicated_idxs = []
+        for i1 in range(len(entries)):
+            for i2 in range(i1 + 1, len(entries)):
+                if entries[i1]["ID"] == entries[i2]["ID"]:
+                    duplicated_idxs.append(i2)
+        for i in sorted(duplicated_idxs, reverse=True):
+            del entries[i]
+
+        # Remove duplicate entries based on their properties.
+        duplicated_idx_pairs = []
+        for i1 in range(len(entries)):
+            l1 = transform_reference_dict_to_lines(entries[i1])
+            s1 = "\n".join(l1[1:])
+            for i2 in range(i1 + 1, len(entries)):
+                l2 = transform_reference_dict_to_lines(entries[i2])
+                s2 = "\n".join(l2[1:])
+                if s1 == s2:
+                    duplicated_idx_pairs.append((i1, i2))
+        duplicated_idxs = sorted(duplicated_idx_pairs, key=lambda x: x[1], reverse=True)
+        if len(duplicated_idxs) > 0:
+            print("Detected duplicate entries:")
+            for (i1, i2) in duplicated_idxs:
+                print(f"• {entries[i2]['ID']} -> {entries[i1]['ID']}")
+                del entries[i2]
+
+    return entries
 
 
 def transform_reference_dict_to_lines(item: dict[str, str]) -> list[str]:
