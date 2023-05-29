@@ -94,11 +94,20 @@ def chunk_iterable(
 
 def process_bibliography_online(
     input_bibliography: list[dict[str, str]],
+    config: cfg.OnlineUpdaterConfig,
     buffer_size: int = 15,
-    n_parallel: int = 5,
 ) -> list[op.BaseProcessingCommand]:
-    dblp_lookup_service = lus.DBLPLookupService()
-    crossref_lookup_service = lus.CrossrefLookupService()
+    n_parallel: int = config.n_parallel_requests
+
+    print(config)
+    lookup_services = []
+    for service in list(set(config.services)):
+        if service == "dblp":
+            lookup_services.append(lus.DBLPLookupService())
+        elif service == "crossref":
+            lookup_services.append(lus.CrossrefLookupService())
+        else:
+            raise ValueError(f"Unknown service: {service}.")
 
     def get_reference_from_dict(entry: dict[str, str]) -> mru.Reference:
         return mru.Reference(
@@ -109,10 +118,10 @@ def process_bibliography_online(
         )
 
     async def get_online_suggestions(entry: dict[str, str]) -> list[dict[str, str]]:
-        suggestions_dblp = dblp_lookup_service.get_suggestions(entry, 3)
-        suggestions_cr = crossref_lookup_service.get_suggestions(entry, 3)
+        suggestions = [lus.get_suggestions(entry, config.n_suggestions)
+                       for lus in lookup_services]
         return list(
-            itertools.chain(*await asyncio.gather(suggestions_dblp, suggestions_cr))
+            itertools.chain(*await asyncio.gather(*suggestions))
         )
 
     async def get_reference_choice_task(
@@ -225,7 +234,8 @@ def main():
         for pc in processing_commands_offline
         if isinstance(pc, op.KeepItemProcessingCommand)
     ]
-    processing_commands_online = process_bibliography_online(input_bibliography_online)
+    processing_commands_online = process_bibliography_online(
+        input_bibliography_online, config.online_updater)
 
     processing_commands = (
         processing_commands_online + update_processing_commands_offline
