@@ -4,7 +4,7 @@ import itertools
 import json
 import os
 import sys
-from typing import Any, Iterable, Optional, Collection
+from typing import Any, Iterable, Optional
 
 import bibtexparser
 from bibtexparser.bparser import BibDatabase
@@ -97,9 +97,15 @@ def process_bibliography_online(
     config: cfg.OnlineUpdaterConfig,
     buffer_size: int = 15,
 ) -> list[op.BaseProcessingCommand]:
+    """Processes the input bibliography using online lookup services.
+
+    Args:
+        input_bibliography (list[dict[str, str]]): The input bibliography.
+        config (cfg.OnlineUpdaterConfig): The configuration for the online updater.
+        buffer_size (int, optional): The size of the buffer. Defaults to 15.
+    """
     n_parallel: int = config.n_parallel_requests
 
-    print(config)
     lookup_services = []
     for service in list(set(config.services)):
         if service == "dblp":
@@ -118,11 +124,10 @@ def process_bibliography_online(
         )
 
     async def get_online_suggestions(entry: dict[str, str]) -> list[dict[str, str]]:
-        suggestions = [lus.get_suggestions(entry, config.n_suggestions)
-                       for lus in lookup_services]
-        return list(
-            itertools.chain(*await asyncio.gather(*suggestions))
-        )
+        suggestions = [
+            lus.get_suggestions(entry, config.n_suggestions) for lus in lookup_services
+        ]
+        return list(itertools.chain(*await asyncio.gather(*suggestions)))
 
     async def get_reference_choice_task(
         entry: dict[str, str]
@@ -235,7 +240,8 @@ def main():
         if isinstance(pc, op.KeepItemProcessingCommand)
     ]
     processing_commands_online = process_bibliography_online(
-        input_bibliography_online, config.online_updater)
+        input_bibliography_online, config.online_updater
+    )
 
     processing_commands = (
         processing_commands_online + update_processing_commands_offline
