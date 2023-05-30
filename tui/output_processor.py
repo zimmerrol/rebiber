@@ -1,5 +1,6 @@
 import abc
 import re
+import sys
 from datetime import datetime
 from typing import Literal, Union
 import config as cfg
@@ -151,6 +152,35 @@ def _remove_fields(entries: list[dict[str, str]], fields: list[str]):
                 del entry[fk]
 
 
+def _apply_abbreviations(entries: list[dict[str, str]],
+                         abbreviations: list[cfg.NameNormalizationConfig]):
+    """Applies name_normalizations to the bibliography entries.
+
+    Args:
+        entries (list[dict[str, str]]): The bibliography entries that will be updated
+            in-place.
+        abbreviations (list[cfg.NameNormalizationConfig]): The name_normalizations that will be
+            used to update the entries.
+    """
+
+    if len(abbreviations) == 0:
+        return
+    print("Normalizing names.")
+
+    for abbreviation in abbreviations:
+        for full_name in abbreviation.alternative_names:
+            # Check if the regular expression is valid.
+            try:
+                re.compile(full_name)
+            except re.error:
+                print(f"• Invalid regular expression for {abbreviation.name}: {full_name}")
+                sys.exit(-1)
+            for entry in entries:
+                for field in ["journal", "booktitle"]:
+                    if field in entry and re.match(full_name, entry[field]):
+                        entry[field] = abbreviation.name
+
+
 def process_commands(commands: list[BaseProcessingCommand],
                      config: cfg.OutputProcessorConfig) -> list[dict[str, str]]:
     """Process the commands and return the output bibliography items.
@@ -168,9 +198,9 @@ def process_commands(commands: list[BaseProcessingCommand],
     if config.sort:
         entries = sorted(entries, key=lambda x: x["ID"])
 
-    # Remove duplicates.
-    if config.deduplicate:
-        _remove_duplicates(entries)
+    # Apply name_normalizations.
+    if len(config.name_normalizations) > 0:
+        _apply_abbreviations(entries, config.name_normalizations)
 
     # Normalize preprints.
     if config.normalize_preprints:
@@ -179,6 +209,10 @@ def process_commands(commands: list[BaseProcessingCommand],
     # Remove unwanted fields.
     if len(config.remove_fields) > 0:
         _remove_fields(entries, config.remove_fields)
+
+    # Remove duplicates.
+    if config.deduplicate:
+        _remove_duplicates(entries)
 
     return entries
 

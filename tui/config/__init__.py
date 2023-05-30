@@ -1,9 +1,12 @@
 import argparse
 import dataclasses
+import os
 
 from . import utils as ut
-from .config import Config, OutputProcessorConfig, AbbreviationConfig, OnlineUpdaterConfig  # noqa: F401
+from .config import Config, OutputProcessorConfig, NameNormalizationConfig, OnlineUpdaterConfig  # noqa: F401
 
+
+__basefolder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def __get_arg_parser() -> argparse.ArgumentParser:
     """Parse the command line arguments."""
@@ -45,7 +48,11 @@ def get_config() -> Config:
     if args.config is not None:
         config = Config.from_yaml_file(args.config)
     else:
-        config = Config()
+        default_fn = os.path.join(__basefolder, "default_config.yaml")
+        if os.path.exists(default_fn):
+            config = Config.from_yaml_file(default_fn)
+        else:
+            config = Config()
     del args.config
     ut.update_object_with_dict(config, args.__dict__)
 

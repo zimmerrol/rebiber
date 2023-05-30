@@ -34,19 +34,19 @@ class OnlineUpdaterConfig:
 
 
 @dataclasses.dataclass
-class AbbreviationConfig:
-    """A class representing a conference abbreviation."""
+class NameNormalizationConfig:
+    """A class representing a conference name."""
 
-    abbreviation: str
-    full_names: list[str]
+    name: str
+    alternative_names: list[str]
 
 
 @dataclasses.dataclass
 class OutputProcessorConfig:
-    abbreviations: list[AbbreviationConfig] = ut.cli_parameter(
+    name_normalizations: list[NameNormalizationConfig] = ut.cli_parameter(
         "a",
         default_factory=list,
-        help="The list of conference abbreviation data.",
+        help="The list of conference name data.",
     )
     deduplicate: bool = ut.cli_parameter(
         "d", default=True, help="True to remove entries that are duplicates based on"
