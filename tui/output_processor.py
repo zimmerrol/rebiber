@@ -1,6 +1,8 @@
 import abc
+import re
 from datetime import datetime
 from typing import Literal, Union
+import config as cfg
 
 
 class BaseProcessingCommand(abc.ABC):
@@ -52,50 +54,6 @@ class KeepItemProcessingCommand(BaseProcessingCommand):
         return self.current_item
 
 
-def process_commands(commands: list[BaseProcessingCommand],
-                     sort: bool, deduplicate: bool) -> list[dict[str, str]]:
-    """Process the commands and return the output bibliography items.
-
-    Args:
-        commands (list[BaseProcessingCommand]): The processing commands.
-        sort (bool): Whether to sort the output bibliography items by their key.
-        deduplicate (bool): Whether to deduplicate the output bibliography items.
-    """
-    entries = [command.output for command in commands]
-
-    if sort:
-        entries = sorted(entries, key=lambda x: x["ID"])
-
-    if deduplicate:
-        # Remove duplicate entries based on their ID.
-        duplicated_idxs = []
-        for i1 in range(len(entries)):
-            for i2 in range(i1 + 1, len(entries)):
-                if entries[i1]["ID"] == entries[i2]["ID"]:
-                    duplicated_idxs.append(i2)
-        for i in sorted(duplicated_idxs, reverse=True):
-            del entries[i]
-
-        # Remove duplicate entries based on their properties.
-        duplicated_idx_pairs = []
-        for i1 in range(len(entries)):
-            l1 = transform_reference_dict_to_lines(entries[i1])
-            s1 = "\n".join(l1[1:])
-            for i2 in range(i1 + 1, len(entries)):
-                l2 = transform_reference_dict_to_lines(entries[i2])
-                s2 = "\n".join(l2[1:])
-                if s1 == s2:
-                    duplicated_idx_pairs.append((i1, i2))
-        duplicated_idxs = sorted(duplicated_idx_pairs, key=lambda x: x[1], reverse=True)
-        if len(duplicated_idxs) > 0:
-            print("Detected duplicate entries:")
-            for (i1, i2) in duplicated_idxs:
-                print(f"• {entries[i2]['ID']} -> {entries[i1]['ID']}")
-                del entries[i2]
-
-    return entries
-
-
 def transform_reference_dict_to_lines(item: dict[str, str]) -> list[str]:
     """Transform a reference dictionary to a list of lines."""
     item_lines = [f"@{item['ENTRYTYPE']}{{{item['ID']},"]
@@ -105,6 +63,124 @@ def transform_reference_dict_to_lines(item: dict[str, str]) -> list[str]:
         item_lines += [f"  {key} = {{{value}}},"]
     item_lines += ["}"]
     return item_lines
+
+
+def _normalize_preprints(entries: list[dict[str, str]]):
+    """Normalizes preprints in the bibliography.
+
+    Args:
+        entries (list[dict[str, str]]): The bibliography entries that will be updated
+            in-place.
+    """
+    print("Normalizing preprints:")
+    for i in range(len(entries)):
+        entry = entries[i]
+        entry_str = " ".join(transform_reference_dict_to_lines(entry)).lower()
+        arxiv_ids = set()
+        for m in re.finditer(
+                r"(arxiv:|arxiv.org\/abs\/|arxiv.org\/pdf\/)([0-9]{4}).([0-9]{5})",
+                entry_str):
+            arxiv_ids.add(f"{m.group(2)}.{m.group(3)}")
+        if len(arxiv_ids) > 1:
+            print(f"• Cannot normalize {entry['ID']}: conflicting arXiv IDs found.")
+        elif len(arxiv_ids) == 1:
+            new_entry = {k: entry[k] for k in ["ID", "ENTRYTYPE", "author", "title"]}
+            new_entry["eprint"] = arxiv_ids.pop()
+            new_entry["journal"] = "arXiv preprint"
+            new_entry["volume"] = f"abs/{new_entry['eprint']}"
+            new_entry["year"] = "20" + new_entry["eprint"].split(".")[0][:2]
+            new_entry["url"] = f"https://arxiv.org/abs/{new_entry['eprint']}"
+            # Update entry by removing old and inserting new entry.
+            entries.pop(i)
+            entries.insert(i, new_entry)
+
+
+def _remove_duplicates(entries: list[dict[str, str]]):
+    """Removes duplicate entries from the bibliography.
+
+    Args:
+        entries (list[dict[str, str]]): The bibliography entries that will be updated
+            in-place.
+    """
+    # Remove duplicate entries based on their ID.
+    duplicated_idxs = []
+    for i1 in range(len(entries)):
+        for i2 in range(i1 + 1, len(entries)):
+            if entries[i1]["ID"] == entries[i2]["ID"]:
+                print(entries[i1])
+                print(entries[i2])
+                duplicated_idxs.append(i2)
+    if len(duplicated_idxs) > 0:
+        print("Detected duplicate keys:")
+        for i in sorted(duplicated_idxs, reverse=True):
+            print(f"• {entries[i]['ID']}")
+            del entries[i]
+
+    # Remove duplicate entries based on their properties.
+    duplicated_idx_pairs = []
+    for i1 in range(len(entries)):
+        l1 = transform_reference_dict_to_lines(entries[i1])
+        s1 = "\n".join(l1[1:])
+        for i2 in range(i1 + 1, len(entries)):
+            l2 = transform_reference_dict_to_lines(entries[i2])
+            s2 = "\n".join(l2[1:])
+            if s1 == s2:
+                duplicated_idx_pairs.append((i1, i2))
+    duplicated_idxs = sorted(duplicated_idx_pairs, key=lambda x: x[1], reverse=True)
+    if len(duplicated_idxs) > 0:
+        print("Detected duplicate entries:")
+        for (i1, i2) in duplicated_idxs:
+            print(f"• {entries[i2]['ID']} -> {entries[i1]['ID']}")
+            del entries[i2]
+
+
+def _remove_fields(entries: list[dict[str, str]], fields: list[str]):
+    """Removes fields from the bibliography entries.
+
+    Args:
+        entries (list[dict[str, str]]): The bibliography entries that will be updated
+            in-place.
+        fields (list[str]): The fields that will be removed.
+    """
+
+    print("Removing fields:")
+    for fk in fields:
+        print(f"• {fk}")
+        for entry in entries:
+            if fk in entry:
+                del entry[fk]
+
+
+def process_commands(commands: list[BaseProcessingCommand],
+                     config: cfg.OutputProcessorConfig) -> list[dict[str, str]]:
+    """Process the commands and return the output bibliography items.
+
+    Args:
+        commands (list[BaseProcessingCommand]): The processing commands.
+        config: (cfg.OutputProcessorConfig): The output writer configuration.
+
+    Returns:
+        list[dict[str, str]]: The output bibliography items.
+    """
+    entries = [command.output for command in commands]
+
+    # Sort entries.
+    if config.sort:
+        entries = sorted(entries, key=lambda x: x["ID"])
+
+    # Remove duplicates.
+    if config.deduplicate:
+        _remove_duplicates(entries)
+
+    # Normalize preprints.
+    if config.normalize_preprints:
+        _normalize_preprints(entries)
+
+    # Remove unwanted fields.
+    if len(config.remove_fields) > 0:
+        _remove_fields(entries, config.remove_fields)
+
+    return entries
 
 
 def write_output(output: list[dict[str, str]], output_fn: str) -> None:

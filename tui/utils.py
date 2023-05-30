@@ -1,30 +1,36 @@
+import itertools
 import re
 import hashlib
+from typing import Iterable, Any
 
 
-def has_integer(line: str) -> bool:
-    """Checks if a line contains an integer."""
-    return any(char.isdigit() for char in line)
+def chunk_iterable(
+        iterable: Iterable[Any], n: int, fillvalue: Any = None
+) -> Iterable[list[Any]]:
+    """Chunks an iterable into chunks of size n.
 
+    Args:
+        iterable (Iterable[Any]): The iterable to chunk.
+        n (int): The size of the chunks.
+        fillvalue (Any, optional): The value to use to fill the last chunk if the
+            iterable is not divisible by n. Defaults to None.
 
-def is_contain_var(line: str) -> bool:
-    """Checks if a line contains a variable."""
-    if "month=" in line.lower().replace(" ", ""):
-        return True  # special case
-    line_clean = line.lower().replace(" ", "")
-    if "=" in line_clean:
-        # We ask if there is {, ', ", or if there is an integer in the line
-        # (since integer input is allowed)
-        if ("{" in line_clean or '"' in line_clean or "'" in line_clean) or has_integer(
-            line
-        ):
-            return False
-        else:
-            return True
-    return False
+    Returns:
+        Iterable[list[Any]]: The chunks.
+    """
+    args = [iter(iterable)] * n
+    return itertools.zip_longest(*args, fillvalue=fillvalue)
 
 
 def cleanup_title(title: str) -> str:
+    """Cleans up a title string by removing extra spaces, non-alphanumeric characters.
+
+    Args:
+        title (str): The title to clean up.
+
+    Returns:
+        str: The cleaned up title.
+    """
     title = re.sub(r"[^a-zA-Z0-9]", r" ", title)
     title = re.sub(r"\s\s", r" ", title)
     title = re.sub(r"  ", r" ", title)
@@ -33,6 +39,14 @@ def cleanup_title(title: str) -> str:
 
 
 def cleanup_author(author: str) -> str:
+    """Cleans up an author string by removing newlines and double spaces.
+
+    Args:
+        author (str): The author to clean up.
+
+    Returns:
+        str: The cleaned up author.
+    """
     author = author.replace("\n", " ")
     author = re.sub(r"\s\s", r" ", author)
     author = re.sub(r"  ", r" ", author)

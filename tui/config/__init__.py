@@ -2,7 +2,7 @@ import argparse
 import dataclasses
 
 from . import utils as ut
-from .config import Config, AbbreviationConfig, OnlineUpdaterConfig  # noqa: F401
+from .config import Config, OutputProcessorConfig, AbbreviationConfig, OnlineUpdaterConfig  # noqa: F401
 
 
 def __get_arg_parser() -> argparse.ArgumentParser:

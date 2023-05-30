@@ -4,7 +4,8 @@ import itertools
 import json
 import os
 import sys
-from typing import Any, Iterable, Optional
+from typing import Optional
+import copy
 
 import bibtexparser
 from bibtexparser.bparser import BibDatabase
@@ -84,14 +85,6 @@ def load_input_bibliography(input_fn: str) -> BibDatabase:
         return bibtexparser.load(input_f, bibparser).entries
 
 
-def chunk_iterable(
-    iterable: Iterable[Any], n: int, fillvalue: Any = None
-) -> Iterable[list[Any]]:
-    """Chunks an iterable into chunks of size n."""
-    args = [iter(iterable)] * n
-    return itertools.zip_longest(*args, fillvalue=fillvalue)
-
-
 def process_bibliography_online(
     input_bibliography: list[dict[str, str]],
     config: cfg.OnlineUpdaterConfig,
@@ -104,6 +97,9 @@ def process_bibliography_online(
         config (cfg.OnlineUpdaterConfig): The configuration for the online updater.
         buffer_size (int, optional): The size of the buffer. Defaults to 15.
     """
+    if not config.enable:
+        return [op.KeepItemProcessingCommand(it) for it in input_bibliography]
+
     n_parallel: int = config.n_parallel_requests
 
     lookup_services = []
@@ -145,7 +141,7 @@ def process_bibliography_online(
 
     async def produce(queue: asyncio.Queue):
         # Add first rct separately to avoid waiting times at the beginning.
-        for entry_chunks in chunk_iterable(input_bibliography[1:], n_parallel):
+        for entry_chunks in ut.chunk_iterable(input_bibliography[1:], n_parallel):
             rcts = await asyncio.gather(
                 *[
                     get_reference_choice_task(entry)
@@ -212,7 +208,8 @@ def process_bibliography_offline(
 
     output_commands: list[op.BaseProcessingCommand] = []
     for ir in input_bibliography:
-        mor = offline_bibliography.get(ut.cleanup_title(ir["title"]), None)
+        mor = copy.deepcopy(
+            offline_bibliography.get(ut.cleanup_title(ir["title"]), None))
         if mor is None:
             output_commands.append(op.KeepItemProcessingCommand(ir))
         else:
@@ -248,7 +245,7 @@ def main():
     )
 
     op.write_output(
-        op.process_commands(processing_commands, config.sort, config.deduplicate),
+        op.process_commands(processing_commands, config.output_processor),
         config.output)
 
 

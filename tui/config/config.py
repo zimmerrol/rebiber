@@ -42,16 +42,7 @@ class AbbreviationConfig:
 
 
 @dataclasses.dataclass
-class Config(dataclass_wizard.YAMLWizard):
-    """A config object that can be accessed like a dictionary or an object."""
-
-    input: str = ut.cli_parameter("i", required=True, help="The input bib file.")
-    output: str = ut.cli_parameter("o", required=True, help="The output bib file.")
-    bibliography_folder: str = ut.cli_parameter(
-        "l",
-        default=os.path.join(_basefolder, "data"),
-        help="Folder to load offline candidate bibliography files from.",
-    )
+class OutputProcessorConfig:
     abbreviations: list[AbbreviationConfig] = ut.cli_parameter(
         "a",
         default_factory=list,
@@ -64,19 +55,42 @@ class Config(dataclass_wizard.YAMLWizard):
     shorten: bool = ut.cli_parameter(
         "s", default=False, help="True to shorten the conference names."
     )
+    sort: bool = ut.cli_parameter(
+        "st",
+        default=False,
+        help="True to sort the output BibTeX entries alphabetically by ID.",
+    )
     remove_fields: list[str] = ut.cli_parameter(
         "r",
         default_factory=list,
         help="A list of fields to remove from the output entries.",
     )
-    sort: bool = ut.cli_parameter(
-        "st",
-        default=False,
-        help="True to sort the output BibTeX entries alphabetically by ID.",
+    normalize_preprints: bool = ut.cli_parameter(
+        "np",
+        default=True,
+        help="True to normalize preprints (e.g., arXiv) to the same format.",
+    )
+
+
+@dataclasses.dataclass
+class Config(dataclass_wizard.YAMLWizard):
+    """A config object that can be accessed like a dictionary or an object."""
+
+    input: str = ut.cli_parameter("i", required=True, help="The input bib file.")
+    output: str = ut.cli_parameter("o", required=True, help="The output bib file.")
+    bibliography_folder: str = ut.cli_parameter(
+        "l",
+        default=os.path.join(_basefolder, "data"),
+        help="Folder to load offline candidate bibliography files from.",
     )
     online_updater: OnlineUpdaterConfig = ut.cli_parameter(
         "ol",
         default_factory=OnlineUpdaterConfig,
         help="Controls whether/how online resources are used to to look for missing "
         "BibTeX entries in a semi-automated way.",
+    )
+    output_processor: OutputProcessorConfig = ut.cli_parameter(
+        "ow",
+        default_factory=OutputProcessorConfig,
+        help="Controls how the output BibTeX entries are written to the output file.",
     )

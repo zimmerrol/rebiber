@@ -71,7 +71,10 @@ def update_object_with_dict(obj, d):
     # Update the top-level fields.
     keys = [k for k in d.keys() if "." not in k]
     for k in keys:
-        field = [f for f in dataclasses.fields(type(obj)) if f.name == k][0]
+        potential_fields = [f for f in dataclasses.fields(type(obj)) if f.name == k]
+        if len(potential_fields) == 0:
+            raise ValueError(f"Unknown argument {k} for {type(obj).__name__}")
+        field = potential_fields[0]
         # Only update the field if it is a CLI parameter and the value is not
         # the default one.
         if field.metadata.get("is_cli_parameter", False):
@@ -92,9 +95,10 @@ def update_object_with_dict(obj, d):
         if previous_inner_key is None:
             previous_inner_key = inner_key
         if inner_key != previous_inner_key or i == len(inner_keys) - 1:
-            previous_inner_key = inner_key
             inner_dict = {
                 ".".join(ki.split(".")[1:]): d[ki]
                 for ki in inner_keys[previous_inner_index:i]
             }
-            update_object_with_dict(getattr(obj, inner_key), inner_dict)
+            update_object_with_dict(getattr(obj, previous_inner_key), inner_dict)
+            previous_inner_key = inner_key
+            previous_inner_index = i
