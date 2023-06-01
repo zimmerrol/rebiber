@@ -1,4 +1,5 @@
 tqdm
 bibtexparser
-pytermgui
-termcolor
+textual
+dataclass-wizard
+certifi
