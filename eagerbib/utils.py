@@ -1,7 +1,9 @@
 import itertools
+import os
 import re
 import hashlib
 from typing import Iterable, Any
+import platformdirs
 
 
 def chunk_iterable(
@@ -68,3 +70,15 @@ def get_md5_hash(fn: str) -> str:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+def get_default_data_directory() -> str:
+    """Returns the default data directory.
+
+    Returns:
+        str: The default data directory.
+    """
+    path = os.path.join(platformdirs.user_data_dir("eagerbib"), "data")
+    if not os.path.exists(path):
+        os.makedirs(path)
+    return path

@@ -3,7 +3,7 @@ import dataclasses
 import os
 
 from . import utils as ut
-from .config import Config, OutputProcessorConfig, NameNormalizationConfig, OnlineUpdaterConfig  # noqa: F401
+from .config import MainConfig, OutputProcessorConfig, NameNormalizationConfig, OnlineUpdaterConfig  # noqa: F401
 
 
 __basefolder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,7 +16,7 @@ def __get_arg_parser() -> argparse.ArgumentParser:
     )
 
     # Add all the parameters to the parser.
-    cli_parameters = ut.get_all_cli_parameters(Config)
+    cli_parameters = ut.get_all_cli_parameters(MainConfig)
     for clip in cli_parameters:
         args = ["--" + clip["name"].replace("_", "-")]
         if clip["short_name"] is not None:
@@ -41,18 +41,18 @@ def __get_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def get_config() -> Config:
+def get_config() -> MainConfig:
     """Get the config based on the indicated config file and other arguments."""
     parser = __get_arg_parser()
     args = parser.parse_args()
     if args.config is not None:
-        config = Config.from_yaml_file(args.config)
+        config = MainConfig.from_yaml_file(args.config)
     else:
         default_fn = os.path.join(__basefolder, "default_config.yaml")
         if os.path.exists(default_fn):
-            config = Config.from_yaml_file(default_fn)
+            config = MainConfig.from_yaml_file(default_fn)
         else:
-            config = Config()
+            config = MainConfig()
     del args.config
     ut.update_object_with_dict(config, args.__dict__)
 

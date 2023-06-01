@@ -4,6 +4,7 @@ import os
 import dataclass_wizard
 
 from . import utils as ut
+from .. import utils as but
 
 # The root directory of the app.
 _basefolder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -11,7 +12,7 @@ _basefolder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @dataclasses.dataclass
 class OnlineUpdaterConfig:
-    """Config for the manual reference updater."""
+    """MainConfig for the manual reference updater."""
 
     enable: bool = ut.cli_parameter(
         "e",
@@ -73,14 +74,14 @@ class OutputProcessorConfig:
 
 
 @dataclasses.dataclass
-class Config(dataclass_wizard.YAMLWizard):
+class MainConfig(dataclass_wizard.YAMLWizard):
     """A config object that can be accessed like a dictionary or an object."""
 
     input: str = ut.cli_parameter("i", required=True, help="The input bib file.")
     output: str = ut.cli_parameter("o", required=True, help="The output bib file.")
     bibliography_folder: str = ut.cli_parameter(
         "l",
-        default=os.path.join(_basefolder, "data"),
+        default=but.get_default_data_directory(),
         help="Folder to load offline candidate bibliography files from.",
     )
     online_updater: OnlineUpdaterConfig = ut.cli_parameter(
