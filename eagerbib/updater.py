@@ -1,9 +1,11 @@
 """Update the offline bibliography files from pre-crawled data online."""
 import argparse
 import glob
+import math
 import os
 import tarfile
 import tempfile
+from typing import Optional
 
 import requests
 import tqdm
@@ -32,9 +34,20 @@ def download_bibliography_package(bibliography_url: str) -> str:
             f"Could not download {bibliography_url}. "
             f"Status code: {response.status_code}"
         )
+    length: Optional[int] = int(
+        response.headers.get(
+            "content-length", response.headers.get("Content-length", 0)
+        )
+    )
+    if length is not None:
+        length = int(math.ceil(length / (1024 * 1024)))
+    else:
+        length = None
     tmp_fn = os.path.join(tempfile.mkdtemp(), bibliography_url.split("/")[-1])
     with open(tmp_fn, "wb") as f:
-        for data in tqdm.tqdm(response.iter_content(chunk_size=1024), unit="kb"):
+        for data in tqdm.tqdm(
+            response.iter_content(chunk_size=1024 * 1024), unit="mb", total=length
+        ):
             f.write(data)
 
     return tmp_fn
