@@ -1,5 +1,6 @@
 import asyncio
 import glob
+import gzip
 import itertools
 import json
 import os
@@ -31,12 +32,17 @@ def load_reference_bibliography(bibliography_dir: str) -> dict[str, list[str]]:
     """
     # Check if a cache.json file exists in the bibliography folder and if so, use this
     # one.
-    cache_fn = os.path.join(bibliography_dir, "cache.json")
+    cache_fn = os.path.join(bibliography_dir, "cache.json.gz")
     filenames = glob.glob(os.path.join(bibliography_dir, "*.bib"))
     current_hashes = {os.path.basename(fn): ut.get_md5_hash(fn) for fn in filenames}
     if os.path.exists(cache_fn):
-        with open(cache_fn, "r") as cache_f:
+        with gzip.open(cache_fn, "r") as cache_f:
             cache = json.load(cache_f)
+
+            if len(current_hashes) == 0:
+                print("No BibTeX files found in the bibliography folder. "
+                      "Using pre-built cache.")
+                return cache["bibliographies"]
 
             # Check if the hashes of the current files are consistent with those used
             # to generate cache.json
@@ -63,7 +69,7 @@ def load_reference_bibliography(bibliography_dir: str) -> dict[str, list[str]]:
         bibliographies[ut.cleanup_title(entry["title"])] = entry
 
     # Save the cache.
-    with open(cache_fn, "w") as cache_f:
+    with gzip.open(cache_fn, "w") as cache_f:
         json.dump(
             {"bib_hashes": current_hashes, "bibliographies": bibliographies}, cache_f
         )
