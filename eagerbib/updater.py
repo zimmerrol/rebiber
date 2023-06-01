@@ -99,7 +99,9 @@ def update_bibliography_files(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser("eagerbib offline bibliography updater")
+    parser = argparse.ArgumentParser(
+        "eagerbib-updater", description="Update the offline bibliography files."
+    )
     parser.add_argument(
         "--bibliography",
         "-b",
