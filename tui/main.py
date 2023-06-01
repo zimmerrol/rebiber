@@ -37,21 +37,24 @@ def load_reference_bibliography(bibliography_dir: str) -> dict[str, list[str]]:
     current_hashes = {os.path.basename(fn): ut.get_md5_hash(fn) for fn in filenames}
     if os.path.exists(cache_fn):
         with gzip.open(cache_fn, "r") as cache_f:
-            cache = json.load(cache_f)
+            try:
+                cache = json.loads(cache_f.read().decode("utf-8"))
+            except json.decoder.JSONDecodeError:
+                print("Failed to load cache.json as the file appears corrupted.")
+            else:
+                if len(current_hashes) == 0:
+                    print("No BibTeX files found in the bibliography folder. "
+                          "Using pre-built cache.")
+                    return cache["bibliographies"]
 
-            if len(current_hashes) == 0:
-                print("No BibTeX files found in the bibliography folder. "
-                      "Using pre-built cache.")
-                return cache["bibliographies"]
-
-            # Check if the hashes of the current files are consistent with those used
-            # to generate cache.json
-            cache_hashes = cache["bib_hashes"]
-            # If the hashes are consistent, return the cached bibliographies.
-            if cache_hashes == current_hashes:
-                print("Using cached pre-processed BibTex entries.")
-                return cache["bibliographies"]
-            # Otherwise, build new cache from scratch and overwrite the old one.
+                # Check if the hashes of the current files are consistent with those
+                # used to generate cache.json
+                cache_hashes = cache["bib_hashes"]
+                # If the hashes are consistent, return the cached bibliographies.
+                if cache_hashes == current_hashes:
+                    print("Using cached pre-processed BibTex entries.")
+                    return cache["bibliographies"]
+                # Otherwise, build new cache from scratch and overwrite the old one.
 
     bibliographies = {}
     bibparser = bibtexparser.bparser.BibTexParser(ignore_nonstandard_types=False)
@@ -70,8 +73,10 @@ def load_reference_bibliography(bibliography_dir: str) -> dict[str, list[str]]:
 
     # Save the cache.
     with gzip.open(cache_fn, "w") as cache_f:
-        json.dump(
-            {"bib_hashes": current_hashes, "bibliographies": bibliographies}, cache_f
+        cache_f.write(
+            json.dumps(
+                {"bib_hashes": current_hashes, "bibliographies": bibliographies}
+            ).encode("utf-8")
         )
     print("Saved pre-processed BibTex entries.")
 
