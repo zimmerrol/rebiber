@@ -46,7 +46,8 @@ def download_bibliography_package(bibliography_url: str) -> str:
     tmp_fn = os.path.join(tempfile.mkdtemp(), bibliography_url.split("/")[-1])
     with open(tmp_fn, "wb") as f:
         for data in tqdm.tqdm(
-            response.iter_content(chunk_size=1024 * 1024), unit="mb", total=length
+            response.iter_content(chunk_size=1024 * 1024), unit="mb", total=length,
+            desc="Downloading bibliography package."
         ):
             f.write(data)
 
