@@ -78,6 +78,7 @@ def _normalize_preprints(entries: list[dict[str, str]]):
         entry = entries[i]
         entry_str = " ".join(transform_reference_dict_to_lines(entry)).lower()
         arxiv_ids = set()
+        # Find arXiv IDs in the entry. This pattern was proposed by the rebiber authors.
         for m in re.finditer(
                 r"(arxiv:|arxiv.org\/abs\/|arxiv.org\/pdf\/)([0-9]{4}).([0-9]{5})",
                 entry_str):
