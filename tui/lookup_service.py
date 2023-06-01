@@ -6,9 +6,7 @@ from typing import List
 from typing import Union
 
 import aiohttp
-import requests
 import urllib
-import re
 import bibtexparser
 import warnings
 import ssl
@@ -54,7 +52,7 @@ class DBLPLookupService(LookupService):
                     return []
 
 
-def _create_aiohttp_session():
+def _create_aiohttp_session() -> aiohttp.ClientSession:
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     return aiohttp.ClientSession(connector=connector)
